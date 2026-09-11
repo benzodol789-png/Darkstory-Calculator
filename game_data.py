@@ -350,6 +350,73 @@ def success_chance(pieces, needed):
     return min(100.0, pieces / float(needed) * 100.0)
 
 
+# ---------------------------------------------------------------------------
+# แผนการไต่เกรด — สืบทอดข้ามเกรดได้ทีละเกรด และระดับร่วงทุกครั้งที่สืบ
+# ---------------------------------------------------------------------------
+
+def upgrade_plan(start_grade, start_level, target_grade, target_level):
+    """ไล่ทีละขั้นจากของที่ถืออยู่ ไปจนถึงเกรด+ระดับที่ตั้งไว้
+
+    กติกาที่ผู้ใช้ยืนยัน:
+      - สืบทอดข้ามเกรดได้ "ทีละเกรด" เท่านั้น ข้ามรวดเดียวไม่ได้
+      - ทุกครั้งที่สืบ ระดับร่วงตาม HIGHER_RESULT_LEVEL (+15 -> +10, +10 -> +6)
+      - ตารางสืบทอดเริ่มที่ +10 ถ้าร่วงต่ำกว่านั้นต้องตีขึ้นมาก่อนจึงสืบต่อได้
+        (เคสนี้ทำให้มีค่าชิ้นส่วนโผล่กลางทาง ไม่ใช่แค่ตอนท้าย)
+      - ถึงเกรดเป้าหมายแล้วค่อยตีบวกต่อจนถึงระดับที่ต้องการ
+
+    คืน dict: steps (รายการขั้นตอน), pieces (ชิ้นส่วนรวม), gold (ค่าสืบทอดรวม),
+    final_level (ระดับที่ได้จริง), overshoot (ได้สูงกว่าที่ขอไหม)
+    """
+    _check_grade(start_grade)
+    _check_grade(target_grade)
+    for name, lv in (("ระดับปัจจุบัน", start_level), ("ระดับเป้าหมาย", target_level)):
+        if not MIN_LEVEL <= lv <= MAX_LEVEL:
+            raise CalcError("%s ต้องอยู่ระหว่าง +%d ถึง +%d"
+                            % (name, MIN_LEVEL, MAX_LEVEL))
+    if target_grade < start_grade:
+        raise CalcError("เกรดเป้าหมายต่ำกว่าเกรดปัจจุบัน สืบทอดย้อนลงไม่ได้")
+
+    steps = []
+    pieces = 0
+    gold = 0
+    grade = start_grade
+    level = start_level
+
+    while grade < target_grade:
+        if level < MIN_INHERIT_LEVEL:
+            # ยังสืบต่อไม่ได้ ต้องตีขึ้นไปให้ถึงระดับต่ำสุดที่ตารางสืบทอดรองรับ
+            need = upgrade_pieces(level, MIN_INHERIT_LEVEL, grade)
+            pieces += need
+            steps.append({"kind": "upgrade", "grade": grade, "from": level,
+                          "to": MIN_INHERIT_LEVEL, "pieces": need})
+            level = MIN_INHERIT_LEVEL
+
+        nxt = grade + 1
+        cost = inherit_cost(INHERIT_MODE_HIGHER, level, grade, nxt)
+        after = HIGHER_RESULT_LEVEL[level]
+        gold += cost
+        steps.append({"kind": "inherit", "grade": grade, "to_grade": nxt,
+                      "from": level, "to": after, "gold": cost})
+        grade = nxt
+        level = after
+
+    if level < target_level:
+        need = upgrade_pieces(level, target_level, grade)
+        pieces += need
+        steps.append({"kind": "upgrade", "grade": grade, "from": level,
+                      "to": target_level, "pieces": need})
+        level = target_level
+
+    return {
+        "steps": steps,
+        "pieces": pieces,
+        "gold": gold,
+        "final_level": level,
+        # สืบมาแล้วได้สูงกว่าที่ขอ — ลดระดับลงไม่ได้ จึงต้องบอกตามจริง
+        "overshoot": level > target_level,
+    }
+
+
 def available_targets(mode, grade_index):
     """รายชื่อเกรดเป้าหมายที่เลือกได้จริงสำหรับโหมดนี้ (ใช้กรอง combobox)"""
     if mode == INHERIT_MODE_SAME:

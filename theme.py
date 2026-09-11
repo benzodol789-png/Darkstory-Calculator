@@ -395,11 +395,14 @@ def stone_icon(line, tier, size=22):
     ต้องเก็บผลลัพธ์ไว้ในตัวแปรที่ไม่ถูกเก็บกวาด ไม่งั้น Tk จะลบรูปทิ้ง
     ที่นี่ใช้ _icon_cache ถือไว้ให้แล้ว
     """
-    key = (line, tier, size)
+    root = tk._default_root
+    if root is None or not HAVE_PIL:
+        return None
+    # ผูกคีย์กับ Tk ตัวที่สร้างรูป ไม่งั้นถ้ามี Tk ตัวใหม่จะได้รูปที่ใช้ไม่ได้
+    # แล้วพังเป็น TclError: image "pyimageN" doesn't exist
+    key = (id(root), line, tier, size)
     if key in _icon_cache:
         return _icon_cache[key]
-    if not HAVE_PIL:
-        return None
 
     img = _load_stone_image(line, tier)
     if img is not None:
@@ -614,6 +617,69 @@ def work_area():
         return rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top
     except Exception:
         return None
+
+
+class ScrollArea:
+    """กรอบที่เลื่อนได้ "เฉพาะตอนจำเป็น"
+
+    เนื้อหาพอดีหน้าต่าง = ไม่มีแถบเลื่อนให้เกะกะเลย
+    จอเตี้ยกว่าเนื้อหาเมื่อไหร่แถบถึงโผล่ ของจึงไม่มีทางโดนตัดหาย
+    ใส่ widget ลงใน .body เหมือน Frame ปกติ
+    """
+
+    def __init__(self, parent, padding=12):
+        self.outer = ttk.Frame(parent, style="TFrame")
+        self.outer.rowconfigure(0, weight=1)
+        self.outer.columnconfigure(0, weight=1)
+
+        self.canvas = tk.Canvas(self.outer, highlightthickness=0, bd=0,
+                                bg=PALETTE["base"])
+        self.canvas.grid(row=0, column=0, sticky="nsew")
+
+        self.bar = ttk.Scrollbar(self.outer, orient="vertical",
+                                 command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=self._on_scroll)
+
+        self.body = ttk.Frame(self.canvas, style="TFrame", padding=padding)
+        self._window = self.canvas.create_window((0, 0), window=self.body,
+                                                 anchor="nw")
+
+        self.body.bind("<Configure>", self._on_body_resize)
+        self.canvas.bind("<Configure>", self._on_canvas_resize)
+        # ล้อเมาส์ต้องผูกตอนเมาส์อยู่เหนือกรอบนี้เท่านั้น ไม่งั้นแท็บอื่นเลื่อนตาม
+        self.canvas.bind("<Enter>", self._bind_wheel)
+        self.canvas.bind("<Leave>", self._unbind_wheel)
+
+    def _on_scroll(self, first, last):
+        # ซ่อนแถบเลื่อนเมื่อเนื้อหาพอดีอยู่แล้ว
+        if float(first) <= 0.0 and float(last) >= 1.0:
+            self.bar.grid_remove()
+        else:
+            self.bar.grid(row=0, column=1, sticky="ns")
+        self.bar.set(first, last)
+
+    def _on_body_resize(self, _event=None):
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+    def _on_canvas_resize(self, event):
+        # ให้เนื้อหากว้างเท่ากรอบเสมอ จะได้ไม่ต้องเลื่อนแนวนอน
+        self.canvas.itemconfigure(self._window, width=event.width)
+
+    def _bind_wheel(self, _event=None):
+        self.canvas.bind_all("<MouseWheel>", self._on_wheel)
+
+    def _unbind_wheel(self, _event=None):
+        self.canvas.unbind_all("<MouseWheel>")
+
+    def _on_wheel(self, event):
+        first, last = self.canvas.yview()
+        if first <= 0.0 and last >= 1.0:
+            return              # ไม่มีอะไรให้เลื่อน อย่าไปกินอีเวนต์
+        self.canvas.yview_scroll(-1 * (event.delta // 120), "units")
+
+    def required_height(self):
+        self.body.update_idletasks()
+        return self.body.winfo_reqheight()
 
 
 class RoundedWindow:
