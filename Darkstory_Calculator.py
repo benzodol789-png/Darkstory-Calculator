@@ -935,7 +935,7 @@ class DarkstoryApp:
 
         # ---- ส่วนบน: ตั้งค่า (ซ้าย) + สรุปว่าต้องใช้เท่าไหร่ (ขวา) ----
         form_card, form = theme.card(tab, "ตั้งค่าการตีบวก", accent=p["gold"])
-        form_card.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        form_card.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         form.columnconfigure(0, weight=5)
         form.columnconfigure(1, weight=4)
 
@@ -985,42 +985,70 @@ class DarkstoryApp:
 
         # ช่องสรุปฝั่งขวา — "ต้องใช้เท่าไหร่ ราคาเท่าไหร่"
         # คนละเรื่องกับการ์ดข้างล่างที่ดูว่า "ของที่มีอยู่" ได้กี่ %
-        ttk.Label(need, text="ต้องใช้", style="CardDim.TLabel").grid(
-            row=0, column=0, columnspan=2, sticky="w")
-        self.need_pieces = ttk.Label(need, text="—", style="Value.TLabel")
-        self.need_pieces.grid(row=1, column=0, columnspan=2, sticky="w")
-        self.need_melt = ttk.Label(need, text="", style="CardDim.TLabel")
-        self.need_melt.grid(row=2, column=0, columnspan=2, sticky="w",
-                            pady=(0, 8))
+        # ---- ช่องสรุปฝั่งขวา: "ต้องใช้อะไรบ้าง ราคาเท่าไหร่" ----
+        # บล็อกบนแยกตามกิจกรรม บล็อกล่างคือบิลรวม
+        # คนละเรื่องกับการ์ดข้างล่างที่ดูว่า "ของที่มีอยู่" ได้กี่ %
+        row = 0
+
+        def money_row(label_text, style="Card.TLabel"):
+            """แถวป้ายซ้าย-ตัวเลขขวา + บรรทัดเล็กใต้ไว้บอกที่มา"""
+            nonlocal row
+            ttk.Label(need, text=label_text, style="CardDim.TLabel").grid(
+                row=row, column=0, sticky="w")
+            value = ttk.Label(need, text="—", style=style)
+            value.grid(row=row, column=1, sticky="e")
+            why = ttk.Label(need, text="", style="CardDim.TLabel",
+                            wraplength=200, justify="left")
+            why.grid(row=row + 1, column=0, columnspan=2, sticky="w",
+                     pady=(0, 3))
+            row += 2
+            return value, why
+
+        self.use_upgrade, self.use_upgrade_why = money_row("ใช้ตีบวก")
+        self.use_inherit, self.use_inherit_why = money_row("ใช้สืบทอด")
 
         ttk.Separator(need, orient="horizontal").grid(
-            row=3, column=0, columnspan=2, sticky="ew", pady=(0, 6))
+            row=row, column=0, columnspan=2, sticky="ew", pady=(2, 5))
+        row += 1
+
+        ttk.Label(need, text="สรุปรายการ", style="Field.TLabel").grid(
+            row=row, column=0, columnspan=2, sticky="w", pady=(0, 3))
+        row += 1
+
+        self.need_pieces = ttk.Label(need, text="—", style="Value.TLabel")
+        self.need_pieces.grid(row=row, column=0, columnspan=2, sticky="w")
+        row += 1
+        self.need_melt = ttk.Label(need, text="", style="CardDim.TLabel")
+        self.need_melt.grid(row=row, column=0, columnspan=2, sticky="w",
+                            pady=(0, 5))
+        row += 1
 
         self.cost_mat = ttk.Label(need, text="—", style="Card.TLabel")
         self.cost_inherit = ttk.Label(need, text="—", style="Card.TLabel")
-        for offset, (text, value) in enumerate(((" มูลค่าวัสดุ", self.cost_mat),
-                                                (" ค่าสืบทอด", self.cost_inherit))):
+        for text, value in (("มูลค่าวัสดุ", self.cost_mat),
+                            ("ค่าสืบทอด", self.cost_inherit)):
             ttk.Label(need, text=text, style="CardDim.TLabel").grid(
-                row=4 + offset, column=0, sticky="w")
-            value.grid(row=4 + offset, column=1, sticky="e")
+                row=row, column=0, sticky="w")
+            value.grid(row=row, column=1, sticky="e")
+            row += 1
 
         ttk.Separator(need, orient="horizontal").grid(
-            row=6, column=0, columnspan=2, sticky="ew", pady=(6, 5))
-        ttk.Label(need, text=" รวมทั้งหมด", style="Field.TLabel").grid(
-            row=7, column=0, sticky="w")
-        self.cost_total = ttk.Label(need, text="—", style="Info.Card.TLabel")
-        self.cost_total.grid(row=7, column=1, sticky="e")
-        self.cost_thb = ttk.Label(need, text="", style="CardDim.TLabel")
-        self.cost_thb.grid(row=8, column=1, sticky="e")
+            row=row, column=0, columnspan=2, sticky="ew", pady=(5, 4))
+        row += 1
 
-        self.calc_route = ttk.Label(need, text="", style="CardDim.TLabel",
-                                    wraplength=200, justify="left")
-        self.calc_route.grid(row=9, column=0, columnspan=2, sticky="w",
-                             pady=(8, 0))
+        ttk.Label(need, text="รวมทั้งหมด", style="Field.TLabel").grid(
+            row=row, column=0, sticky="w")
+        self.cost_total = ttk.Label(need, text="—", style="Info.Card.TLabel")
+        self.cost_total.grid(row=row, column=1, sticky="e")
+        row += 1
+        self.cost_thb = ttk.Label(need, text="", style="CardDim.TLabel")
+        self.cost_thb.grid(row=row, column=1, sticky="e")
+        row += 1
+
         self.calc_note = ttk.Label(need, text="", style="CardDim.TLabel",
                                    wraplength=200, justify="left")
-        self.calc_note.grid(row=10, column=0, columnspan=2, sticky="w",
-                            pady=(4, 0))
+        self.calc_note.grid(row=row, column=0, columnspan=2, sticky="w",
+                            pady=(6, 0))
 
         for combo in (self.st, self.en, self.gr, self.inh, self.tgr):
             combo.bind("<<ComboboxSelected>>", self._settings_changed, add="+")
@@ -1028,7 +1056,7 @@ class DarkstoryApp:
         # ---- ส่วนล่าง: หินที่มีอยู่จริง แบ่งซ้ายน้ำเงิน ขวาแดง ----
         stone_card, stones = theme.card(tab, "หินที่จะใส่",
                                         accent=theme.TAB_ACCENTS[1])
-        stone_card.grid(row=1, column=0, sticky="ew", pady=(0, 10))
+        stone_card.grid(row=1, column=0, sticky="ew", pady=(0, 8))
         stones.columnconfigure(0, weight=1)
         stones.columnconfigure(1, weight=1)
 
@@ -1444,13 +1472,12 @@ class DarkstoryApp:
         return "กรุณาเช็คราคา %s และอัปเดตลงหน้าไอเทมก่อนใช้งาน" % gd.BLUE_UNIT
 
     def _clear_need(self, note=""):
-        self.calc_route.config(text="", foreground="")
-        self.need_pieces.config(text="—")
-        self.need_melt.config(text="")
-        self.cost_mat.config(text="—")
-        self.cost_inherit.config(text="—")
-        self.cost_total.config(text="—")
-        self.cost_thb.config(text="")
+        for label in (self.use_upgrade, self.use_inherit, self.need_pieces,
+                      self.cost_mat, self.cost_inherit, self.cost_total):
+            label.config(text="—")
+        for label in (self.use_upgrade_why, self.use_inherit_why,
+                      self.need_melt, self.cost_thb):
+            label.config(text="")
         self.calc_note.config(text=note,
                               foreground=theme.PALETTE["danger"] if note else "")
 
@@ -1500,34 +1527,49 @@ class DarkstoryApp:
                                         MATERIAL_BLUE_RATIO)
         total_gold = material_gold + inherit
 
-        self.need_pieces.config(text="{:,} ชิ้นส่วน".format(pieces))
-        melt_text = "= %s %s" % ("{:,}".format(stones), gd.BLUE_LADDER[1]["unit"])
-        if leftover:
-            melt_text += "  + เศษ %d ชิ้น" % leftover
-        self.need_melt.config(text=melt_text)
+        # บล็อกบน — แยกตามกิจกรรม พร้อมบรรทัดเล็กบอกที่มาใต้ตัวเลข
+        up_parts = []
+        inh_parts = []
+        if plan is not None:
+            for step in plan["steps"]:
+                if step["kind"] == "upgrade":
+                    up_parts.append("ระดับ%s +%d→+%d"
+                                    % (GRADES[step["grade"]], step["from"],
+                                       step["to"]))
+                else:
+                    inh_parts.append("%s→%s" % (GRADES[step["grade"]],
+                                                GRADES[step["to_grade"]]))
+        else:
+            if pieces > 0:
+                up_parts.append("ระดับ%s +%d→+%d"
+                                % (GRADES[grade_index], start, end))
+            if inherit > 0:
+                inh_parts.append("%s ระดับเดียวกัน" % GRADES[grade_index])
 
-        self.cost_mat.config(text="%s ทอง" % money(material_gold))
-        self.cost_inherit.config(text="%s ทอง" % money(inherit))
-        self.cost_total.config(text="%s ทอง" % money(total_gold))
+        self.use_upgrade.config(text="%s เหรียญทอง" % money(material_gold))
+        self.use_inherit.config(text="%s เหรียญทอง" % money(inherit))
+        self.use_upgrade_why.config(
+            text=("(%s)" % ", ".join(up_parts)) if up_parts else "")
+        self.use_inherit_why.config(
+            text=("(%s)" % ", ".join(inh_parts)) if inh_parts else "")
+
+        # บล็อกล่าง — บิลรวม
+        self.need_pieces.config(text="ใช้ {:,} ชิ้นส่วน".format(pieces))
+        stone_text = "({:,} {}".format(stones, gd.BLUE_LADDER[1]["unit"])
+        stone_text += " + เศษ %d ชิ้น)" % leftover if leftover else ")"
+        self.need_melt.config(text=stone_text if pieces else "")
+
+        self.cost_mat.config(text="%s เหรียญทอง" % money(material_gold))
+        self.cost_inherit.config(text="%s เหรียญทอง" % money(inherit))
+        self.cost_total.config(text="%s เหรียญทอง" % money(total_gold))
         self.cost_thb.config(text="%s บาท"
                                   % money(total_gold * self.rate_gold_thb))
 
         notes = []
-        if plan is not None:
-            hops = [" %s +%d" % (GRADES[grade_index], start)]
-            for step in plan["steps"]:
-                if step["kind"] == "inherit":
-                    hops.append(" %s +%d" % (GRADES[step["to_grade"]], step["to"]))
-                else:
-                    hops.append(" +%d" % step["to"])
-            self.calc_route.config(text="เส้นทาง:" + " →".join(hops),
-                                   foreground="")
-            if plan["overshoot"]:
-                # สืบมาแล้วได้สูงกว่าที่ขอ ลดระดับลงไม่ได้ ต้องบอกตามจริง
-                notes.append("⚠ สืบทอดแล้วได้ +%d ซึ่งสูงกว่า +%d ที่ตั้งไว้"
-                             % (plan["final_level"], end))
-        else:
-            self.calc_route.config(text="", foreground="")
+        if plan is not None and plan["overshoot"]:
+            # สืบมาแล้วได้สูงกว่าที่ขอ ลดระดับลงไม่ได้ ต้องบอกตามจริง
+            notes.append("⚠ สืบทอดแล้วได้ +%d ซึ่งสูงกว่า +%d ที่ตั้งไว้"
+                         % (plan["final_level"], end))
         if self.mat_blue_price <= 0:
             notes.append(self._no_price_reason())
         self.calc_note.config(text="\n".join(notes),

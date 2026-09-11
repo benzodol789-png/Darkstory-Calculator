@@ -559,7 +559,7 @@ def card(parent, title, accent=None, subtitle=None):
     หัวข้อมีแถบสีตั้งอยู่ข้างหน้า ทำให้แยกส่วนได้ด้วยสายตาโดยไม่ต้องมีเส้นคั่น
     """
     accent = accent or PALETTE["gold"]
-    outer = ttk.Frame(parent, style="Card.TFrame", padding=(0, 0, 0, 12))
+    outer = ttk.Frame(parent, style="Card.TFrame", padding=(0, 0, 0, 10))
 
     head = ttk.Frame(outer, style="Card.TFrame")
     head.pack(fill=tk.X, padx=14, pady=(12, 8))
