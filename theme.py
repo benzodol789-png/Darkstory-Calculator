@@ -27,33 +27,38 @@ except ImportError:                                   # pragma: no cover
 
 
 # ---------------------------------------------------------------------------
-# สี — ดูดจาก DarkstoryBG1.jpg (hue ~23 องศา อบอุ่น มืดทั้งภาพ)
+# สี — โทนน้ำเงินเข้ม/ฟ้าเรืองแสง ตาม UI ในเกม Darkstory
+#
+# หมายเหตุชื่อคีย์: "gold*" ไม่ได้แปลว่าสีทองแล้ว มันคือ "สีเน้นหลัก" ของธีม
+# (ตอนนี้เป็นฟ้าเรืองแสง) คงชื่อเดิมไว้เพราะมีชื่อ ttk style ผูกอยู่ด้วย
+# เช่น "Gold.TButton" ซึ่ง ttk จะ fallback เงียบๆ ถ้าเปลี่ยนชื่อแล้วตกหล่น
 # ---------------------------------------------------------------------------
 PALETTE = {
-    "void":      "#0b0907",   # นอกสุด (เห็นตอนมุมโค้ง)
-    "base":      "#18120d",   # พื้นแผงหลัก
-    "panel":     "#211a13",   # แผงย่อย
-    "panel_hi":  "#2e2419",   # แถวที่ถูกเลือก / hover
-    "card":      "#2c2319",   # การ์ดเนื้อหา (สว่างกว่าพื้น = ลอยขึ้นมา)
-    "card_lo":   "#080605",   # เงาใต้การ์ด
-    "card_hi":   "#54432d",   # ขอบบนการ์ด (แสงตกกระทบ)
-    "line":      "#4a3423",   # เส้นคั่น
-    "border":    "#6b4a2c",   # ขอบแผง
-    "gold":      "#d9a441",   # ทอง (จากป้ายในภาพ)
-    "gold_hi":   "#f2d18a",
-    "gold_lo":   "#8a6520",
-    "text":      "#f2e6d2",   # ตัวหนังสือหลัก
-    "text_dim":  "#a89179",   # ตัวหนังสือรอง
-    "accent":    "#ff9d4d",   # ส้มพระอาทิตย์ตก
-    "danger":    "#e06c60",
-    "ok":        "#8fbf6a",
-    "info":      "#6fa8d0",   # ฟ้า (ใช้กับฝั่งหินดั้งเดิม)
-    "locked":    "#9c8f7f",   # ของที่ซื้อขายไม่ได้
-    "titlebar":  "#141c26",   # โทนฟ้าจาก BG2 ใช้เป็นแถบหัว
+    "void":      "#05090f",   # นอกสุด (เห็นตอนมุมโค้ง) + พื้นแถบสถานะ
+    "base":      "#0b1421",   # พื้นแผงหลัก
+    "panel":     "#122032",   # แผงย่อย / พื้นช่องกรอก
+    "panel_hi":  "#1c3048",   # แถวที่ถูกเลือก / hover
+    "card":      "#16243a",   # การ์ดเนื้อหา (สว่างกว่าพื้น = ลอยขึ้นมา)
+    "card_lo":   "#040810",   # เงาใต้การ์ด
+    "card_hi":   "#2e5175",   # ขอบบนการ์ด (แสงตกกระทบ)
+    "line":      "#27405c",   # เส้นคั่น
+    "border":    "#35618c",   # ขอบแผง / พื้นแถบที่ถูกเลือก
+    "gold":      "#4fd6f7",   # สีเน้นหลัก — ฟ้าเรืองแสงจากกรอบไอเทมในเกม
+    "gold_hi":   "#b8f0ff",   # ฟ้าสว่าง ใช้กับตัวหนังสือที่ต้องเด่นสุด
+    "gold_lo":   "#1d7fa3",   # ฟ้าเข้ม ใช้ทำเงาปุ่มตอนกด
+    "text":      "#e4eefa",   # ตัวหนังสือหลัก (ขาวอมฟ้า)
+    "text_dim":  "#8aa2bd",   # ตัวหนังสือรอง
+    "accent":    "#a87bff",   # ม่วง — จากกรอบรูนในเกม
+    "danger":    "#ff6b7a",
+    "ok":        "#4ade80",
+    "info":      "#6ea8ff",   # น้ำเงินสด — ต้องแยกจาก gold ที่เป็นฟ้าให้ออก
+    "locked":    "#6f8296",   # เทาอมฟ้า สำหรับของที่ซื้อขายไม่ได้
+    "titlebar":  "#0d1826",   # แถบหัวโปรแกรม
+    "tint":      "#071018",   # ฟิล์มที่ blend ทับภาพพื้นหลังให้เป็นโทนน้ำเงิน
 }
 
-# สีประจำแท็บ — ใช้เป็นแถบเน้นหัวข้อ ให้แต่ละแท็บแยกกันด้วยสายตา
-TAB_ACCENTS = ["#d9a441", "#c98a3e", "#6fa8d0", "#b06fd0"]
+# สีประจำแท็บ — แถบเน้นหัวการ์ด ให้แต่ละแท็บแยกกันด้วยสายตา
+TAB_ACCENTS = ["#4fd6f7", "#4ade80", "#ffc861", "#a87bff", "#ff6b7a"]
 
 CORNER_RADIUS = 18        # มุมโค้งของหน้าต่าง
 PANEL_RADIUS = 14         # มุมโค้งของแผงข้างใน
@@ -94,6 +99,7 @@ FONT_SPEC = {
     "ds.heading": (12, True,  False),   # หัวข้อในการ์ด — หนาและใหญ่กว่าเนื้อชัดเจน
     "ds.label":   (10, True,  False),   # ป้ายกำกับช่องกรอก
     "ds.big":     (16, True,  False),   # ตัวเลขผลลัพธ์ที่ต้องเด่น
+    "ds.chance":  (30, True,  False),   # ตัวเลขโอกาสสำเร็จ — ใหญ่สุดในโปรแกรม
     "ds.mono":    (10, False, True),
 }
 
@@ -214,7 +220,7 @@ def apply_theme(root, fonts):
     style.configure("Close.TButton", background=p["titlebar"], foreground=p["text_dim"],
                     padding=(10, 2), relief="flat", font="ds.bold")
     style.map("Close.TButton",
-              background=[("active", p["danger"])], foreground=[("active", "#ffffff")])
+              background=[("active", p["danger"])], foreground=[("active", p["text"])])
 
     style.configure("TEntry", fieldbackground=p["panel"], foreground=p["text"],
                     insertcolor=p["gold"], borderwidth=1, relief="flat",
@@ -270,6 +276,23 @@ def apply_theme(root, fonts):
 
     style.configure("Status.TLabel", background=p["void"], foreground=p["text_dim"],
                     font="ds.small", padding=(10, 4))
+
+    # ปุ่มตัวเลือกในการ์ด — ต้องตั้ง background เอง ไม่งั้น clam ให้พื้นเทาตัดกับการ์ด
+    style.configure("Card.TRadiobutton", background=p["card"], foreground=p["text"],
+                    font="ds.bold", focuscolor=p["gold"])
+    style.map("Card.TRadiobutton",
+              background=[("active", p["card"])],
+              foreground=[("active", p["gold_hi"]), ("selected", p["gold"])],
+              indicatorcolor=[("selected", p["gold"]), ("!selected", p["panel"])])
+
+    # ตัวเลขโอกาสสำเร็จ — ตัวใหญ่สุดในโปรแกรม เลียนแบบหน้าตีบวกในเกม
+    style.configure("Chance.TLabel", background=p["card"], foreground=p["gold_hi"],
+                    font="ds.chance")
+
+    # แถบโอกาสสำเร็จในแท็บตีบวก
+    style.configure("Chance.Horizontal.TProgressbar", troughcolor=p["panel"],
+                    background=p["gold"], bordercolor=p["line"],
+                    lightcolor=p["gold"], darkcolor=p["gold_lo"], thickness=14)
     return style
 
 
@@ -329,8 +352,8 @@ class Backdrop:
         if self.blur:
             img = img.filter(ImageFilter.GaussianBlur(self.blur))
 
-        # ม่านมืด — ทำให้ตัวหนังสือสีครีมอ่านออกทุกจุดของภาพ
-        overlay = Image.new("RGB", img.size, PALETTE["void"])
+        # ฟิล์มน้ำเงิน — ดึงภาพโทนทองเดิมให้เข้าธีม และทำให้ตัวหนังสืออ่านออกทุกจุด
+        overlay = Image.new("RGB", img.size, PALETTE["tint"])
         img = Image.blend(img, overlay, self.dim)
 
         if radius:
@@ -380,8 +403,8 @@ class Banner:
         top = int((new[1] - height) * self.focus)
         img = img.crop((left, top, left + width, top + height)).convert("RGB")
 
-        # มืดสม่ำเสมอ + ไล่มืดเพิ่มทางล่าง ให้ต่อกับพื้นหลังเนื้อหาแบบไม่มีรอยต่อ
-        base = Image.new("RGB", img.size, PALETTE["void"])
+        # ฟิล์มน้ำเงินสม่ำเสมอ + ไล่มืดเพิ่มทางล่าง ให้ต่อกับพื้นหลังเนื้อหาแบบไม่มีรอยต่อ
+        base = Image.new("RGB", img.size, PALETTE["tint"])
         img = Image.blend(img, base, self.dim)
         fade = Image.new("L", (1, height))
         for y in range(height):

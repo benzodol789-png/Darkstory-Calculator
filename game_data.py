@@ -22,8 +22,42 @@ RED_UNIT = "พลอยสีแดงเข้ม"          # ซื้อข�
 BLUE_PIECE = "ชิ้นส่วนหินดั้งเดิม"
 BLUE_UNIT = "หินดั้งเดิม"            # ซื้อขายได้ ใช้เหรียญทองซื้อขาย
 
-MATERIAL_RED_RATIO = 10    # ชิ้นส่วนหินดั้งเดิมแดง 10 ชิ้น = พลอยสีแดงเข้ม 1 เม็ด
-MATERIAL_BLUE_RATIO = 10   # ชิ้นส่วนหินดั้งเดิม 10 ชิ้น = หินดั้งเดิม 1 ก้อน
+# ---------------------------------------------------------------------------
+# บันไดวัสดุ — ยืนยันกับผู้ใช้แล้ว
+#
+# แต่ละสายไต่ขึ้นทีละชั้น ชั้นละ 10 และ "แยกลงได้จริงทั้งสองทาง" ไม่สูญเสีย
+# ดังนั้นทุกชั้นแปลงกลับเป็นจำนวน "ชิ้นส่วน" (ชั้นล่างสุด) ได้เสมอ
+#
+# และเพราะอัตราเป็น 10 ทุกขั้น การแยกของจึงเท่ากับอ่านเลขฐานสิบทีละหลัก
+#   13,457 ชิ้นส่วน = 13 สูงสุด | 4 ขั้นสูง | 5 ก้อน | 7 ชิ้นส่วน
+# แต่โค้ดข้างล่างไม่ได้ hardcode เลข 10 ไว้ ถ้าเกมออกชั้นที่อัตราต่างไปก็ยังถูก
+#
+# สำคัญ: สายแดงกับสายน้ำเงินให้ "โอกาสตีบวก" เท่ากันชิ้นต่อชิ้น
+# ต่างกันแค่ผลข้างเคียง — ใช้สายแดงแล้วอุปกรณ์ถูกผนึก ขายต่อไม่ได้
+# ---------------------------------------------------------------------------
+
+# per = ต้องใช้ของชั้นที่อยู่ล่างกว่ากี่อัน ถึงได้ของชั้นนี้ 1 อัน (ชั้นล่างสุด = None)
+BLUE_LADDER = (
+    {"name": BLUE_PIECE,           "per": None, "unit": "ชิ้น",  "tradeable": False},
+    {"name": BLUE_UNIT,            "per": 10,   "unit": "ก้อน",  "tradeable": True},
+    {"name": "หินดั้งเดิมขั้นสูง",     "per": 10,   "unit": "ก้อน",  "tradeable": True},
+    {"name": "หินดั้งเดิมสูงสุด",      "per": 10,   "unit": "ก้อน",  "tradeable": True},
+)
+
+RED_LADDER = (
+    {"name": RED_PIECE,            "per": None, "unit": "ชิ้น",  "tradeable": False},
+    {"name": RED_UNIT,             "per": 10,   "unit": "เม็ด",  "tradeable": False},
+    {"name": "หินดั้งเดิมแดงขั้นสูง",  "per": 10,   "unit": "เม็ด",  "tradeable": False},
+    {"name": "หินดั้งเดิมแดงสูงสุด",   "per": 10,   "unit": "เม็ด",  "tradeable": False},
+)
+
+LINE_BLUE = "blue"
+LINE_RED = "red"
+LADDERS = {LINE_BLUE: BLUE_LADDER, LINE_RED: RED_LADDER}
+
+# อัตราชั้นที่ 2 — ชื่อเดิมที่โค้ดส่วนอื่นเรียกใช้อยู่ ดึงจากบันไดเพื่อไม่ให้ค่าสองที่เพี้ยนกัน
+MATERIAL_RED_RATIO = RED_LADDER[1]["per"]     # ชิ้นส่วนหินดั้งเดิมแดง 10 ชิ้น = พลอยสีแดงเข้ม 1 เม็ด
+MATERIAL_BLUE_RATIO = BLUE_LADDER[1]["per"]   # ชิ้นส่วนหินดั้งเดิม 10 ชิ้น = หินดั้งเดิม 1 ก้อน
 
 RED_TRADEABLE = False
 BLUE_TRADEABLE = True
@@ -243,6 +277,77 @@ def pieces_value(pieces, unit_price, ratio=MATERIAL_BLUE_RATIO):
     if pieces <= 0 or unit_price <= 0:
         return 0.0
     return pieces / float(ratio) * unit_price
+
+
+# ---------------------------------------------------------------------------
+# บันไดวัสดุ — แยกลง / หลอมขึ้น / คิดโอกาสตีบวก
+# ---------------------------------------------------------------------------
+
+def ladder(line):
+    """บันไดของสายที่เลือก (LINE_BLUE หรือ LINE_RED)"""
+    if line not in LADDERS:
+        raise CalcError("ไม่รู้จักสายวัสดุ: %s" % line)
+    return LADDERS[line]
+
+
+def tier_pieces(rows, index):
+    """ของชั้น index จำนวน 1 อัน คิดเป็นชิ้นส่วนชั้นล่างสุดกี่ชิ้น"""
+    if not 0 <= index < len(rows):
+        raise CalcError("ไม่มีชั้นที่ %s ในบันไดนี้" % index)
+    total = 1
+    for tier in rows[1:index + 1]:
+        total *= tier["per"]
+    return total
+
+
+def tier_scale(rows):
+    """มูลค่าเป็นชิ้นส่วนของทุกชั้นเรียงตามบันได เช่น (1, 10, 100, 1000)"""
+    return tuple(tier_pieces(rows, i) for i in range(len(rows)))
+
+
+def to_pieces(rows, counts):
+    """รวมของที่มีอยู่ทุกชั้นเป็นจำนวนชิ้นส่วนทั้งหมด
+
+    counts เรียงตามบันได (ชั้นล่างสุดก่อน) ใส่ไม่ครบก็ได้ ตัวที่ขาดนับเป็น 0
+    """
+    scale = tier_scale(rows)
+    total = 0
+    for i, amount in enumerate(counts):
+        if i >= len(scale):
+            break
+        total += max(0, int(amount or 0)) * scale[i]
+    return total
+
+
+def split_down(rows, pieces):
+    """แยกชิ้นส่วนทั้งหมดออกเป็นของแต่ละชั้น ไล่จากชั้นสูงสุดลงมา
+
+    คืน list ยาวเท่าบันได ตำแหน่งตรงกับชั้น เช่น 13,457 -> [7, 5, 4, 13]
+    เศษที่ไม่พอขึ้นชั้นถัดไปค้างอยู่ชั้นล่าง ไม่ปัดขึ้นและไม่ปัดทิ้ง
+    """
+    out = [0] * len(rows)
+    if pieces <= 0:
+        return out
+    left = int(pieces)
+    for i in range(len(rows) - 1, -1, -1):
+        worth = tier_pieces(rows, i)
+        out[i] = left // worth
+        left -= out[i] * worth
+    return out
+
+
+def success_chance(pieces, needed):
+    """โอกาสตีบวกสำเร็จเป็น % จากจำนวนชิ้นส่วนที่ใส่ลงไป
+
+    ค่าใน UPGRADE_RED คือจำนวนที่ทำให้เต็ม 100% — ผู้ใช้ยืนยันจากในเกมว่า
+    ถุงมือราชันย์ +8 -> +9 เกรดเซียน ใช้ 661 ชิ้น = 100% ซึ่งตรงกับ
+    UPGRADE_RED[9][4] = 661 พอดี  ใส่เกินไม่ได้อะไรเพิ่ม จึงตันที่ 100
+    """
+    if needed <= 0:
+        return 100.0
+    if pieces <= 0:
+        return 0.0
+    return min(100.0, pieces / float(needed) * 100.0)
 
 
 def available_targets(mode, grade_index):

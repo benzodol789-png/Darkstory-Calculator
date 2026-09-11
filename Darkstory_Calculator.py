@@ -381,7 +381,9 @@ class DarkstoryApp:
 
         self.rate_gold_thb = DEFAULT_RATE
         self.items = []
-        self.mat_blue_price = 0.0
+        # ราคาหินสายน้ำเงินแยกตามชั้นในบันได {ชั้น: ทองต่อหน่วย} — ชั้น 0 คือชิ้นส่วน
+        # ซึ่งซื้อขายไม่ได้ จึงไม่มีราคา เก็บเฉพาะชั้นที่ tradeable
+        self.mat_prices = {}
 
         self.items_dirty = False        # มีไอเทมที่ยังไม่ได้บันทึกขึ้นเซิร์ฟเวอร์
         self.loaded_from_server = False  # กันไม่ให้เขียนทับชีตก่อนเคยโหลด
@@ -405,6 +407,19 @@ class DarkstoryApp:
 
         if not self.api.configured:
             self.set_status("ยังไม่ได้ตั้งค่าลิงก์เซิร์ฟเวอร์ใน darkstory_config.json", warn=True)
+
+    # ราคา "หินดั้งเดิม" (บันไดชั้น 1) — คงชื่อเดิมไว้เพราะแท็บตีบวก การบันทึก
+    # และไฟล์ในเครื่องอ้างถึงอยู่หลายจุด เปลี่ยนเป็น property จึงไม่ต้องแก้ตามทั้งไฟล์
+    @property
+    def mat_blue_price(self):
+        return self.mat_prices.get(1, 0.0)
+
+    @mat_blue_price.setter
+    def mat_blue_price(self, value):
+        self.mat_prices[1] = float(value or 0.0)
+
+    def mat_price(self, tier):
+        return self.mat_prices.get(tier, 0.0)
 
     # ---------------- หน้าตา ----------------
 
@@ -440,20 +455,18 @@ class DarkstoryApp:
 
         toolbar = ttk.Frame(self.body, style="TFrame")
         toolbar.pack(fill=tk.X, pady=(0, 10))
-        self.load_btn = ttk.Button(toolbar, text="🔄  โหลดข้อมูลจากเซิร์ฟเวอร์",
+        self.load_btn = ttk.Button(toolbar, text="🔄  โหลดข้อมูล",
                                    style="Gold.TButton", command=self.load_from_server)
         self.load_btn.pack(side=tk.RIGHT)
-        ttk.Label(toolbar, style="Dim.TLabel",
-                  text="ข้อมูลราคาซิงก์กับ Google Sheet ของกิลด์").pack(
-            side=tk.LEFT, pady=(6, 0))
 
         nb = ttk.Notebook(self.body)
         nb.pack(fill=tk.BOTH, expand=True)
         self.nb = nb
-        self._build_currency_tab(nb)
-        self._build_items_tab(nb)
-        self._build_materials_tab(nb)
         self._build_calc_tab(nb)
+        self._build_split_tab(nb)
+        self._build_materials_tab(nb)
+        self._build_items_tab(nb)
+        self._build_currency_tab(nb)
 
         self.status = ttk.Label(canvas, text="พร้อมใช้งาน", anchor="w",
                                 style="Status.TLabel")
@@ -474,9 +487,6 @@ class DarkstoryApp:
         self._title_item = canvas.create_text(
             22, 26, anchor="w", text="⚔  DARKSTORY CALCULATOR",
             font="ds.title", fill=p["gold_hi"])
-        self._ver_item = canvas.create_text(
-            22, 48, anchor="w", text="เครื่องคิดเลขไอเทม  v%s" % CURRENT_VERSION,
-            font="ds.small", fill=p["text_dim"])
 
         self.win_buttons = []
         for text, cmd, style_name in (("✕", self.on_close, "Close.TButton"),
@@ -517,7 +527,7 @@ class DarkstoryApp:
         f = self.fonts.fonts
         title_h = f["ds.title"].metrics("linespace")
         small_h = f["ds.small"].metrics("linespace")
-        banner_h = max(72, title_h + small_h + 30)
+        banner_h = max(64, title_h + 34)
         status_h = max(26, small_h + 12)
         return banner_h, status_h
 
@@ -547,12 +557,8 @@ class DarkstoryApp:
         if self._banner_item is not None:
             canvas.tag_raise(self._banner_item)
 
-        title_y = banner_h * 0.34
-        canvas.coords(self._title_item, 22, title_y)
-        canvas.coords(self._ver_item, 22, title_y + self.fonts.fonts["ds.title"]
-                      .metrics("linespace") * 0.85)
+        canvas.coords(self._title_item, 22, banner_h * 0.5)
         canvas.tag_raise(self._title_item)
-        canvas.tag_raise(self._ver_item)
 
         btn_h = max(24, self.fonts.fonts["ds.body"].metrics("linespace") + 8)
         x = width - 12
@@ -681,74 +687,116 @@ class DarkstoryApp:
         self.save_items_btn.pack(side=tk.RIGHT)
 
     def _build_materials_tab(self, nb):
-        p = theme.PALETTE
+        """เหลือแค่ช่องราคา — การแยก/หลอมย้ายไปแท็บของตัวเองแล้ว"""
         tab = ttk.Frame(nb, padding=12)
-        nb.add(tab, text="⚒️  วัสดุ")
+        nb.add(tab, text="💰  ราคา")
 
-        # --- การ์ดหินดั้งเดิม: ตัวเดียวที่มีมูลค่าเป็นเหรียญทอง ---
-        blue_card, blue = theme.card(
-            tab, "หินดั้งเดิม", accent=p["info"],
-            subtitle="ชิ้นส่วนหินดั้งเดิม %d ชิ้น  =  หินดั้งเดิม 1 ก้อน"
-                     % MATERIAL_BLUE_RATIO)
-        blue_card.pack(fill=tk.X, pady=(0, 12))
-        blue.columnconfigure(1, weight=1)
+        outer, body = theme.card(tab, "ราคาหินดั้งเดิม", accent=theme.TAB_ACCENTS[2])
+        outer.pack(fill=tk.X)
+        body.columnconfigure(1, weight=1)
 
-        ttk.Label(blue, style="Ok.Card.TLabel",
-                  text="✔  หินดั้งเดิม ซื้อขายด้วยเหรียญทองได้").grid(
-            row=0, column=0, columnspan=2, sticky="w", pady=(0, 2))
-        ttk.Label(blue, style="Locked.TLabel",
-                  text="🔒  ชิ้นส่วนหินดั้งเดิม ซื้อขายไม่ได้ ต้องหลอมรวมก่อน").grid(
-            row=1, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        scale = gd.tier_scale(gd.BLUE_LADDER)
+        self.price_entries = {}
+        self.price_hints = {}
 
-        ttk.Label(blue, text="ราคาหินดั้งเดิม (ทอง/ก้อน)", style="Field.TLabel").grid(
-            row=2, column=0, columnspan=2, sticky="w")
-        self.blue_price = ttk.Entry(blue)
-        self.blue_price.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(2, 4))
-        self.blue_price.bind("<KeyRelease>", self.upd_blue)
-        self.blue_label = ttk.Label(blue, text="—", style="CardDim.TLabel")
-        self.blue_label.grid(row=4, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        row = 0
+        for tier, spec in enumerate(gd.BLUE_LADDER):
+            if not spec["tradeable"]:
+                continue
+            ttk.Label(body, text=spec["name"], style="Field.TLabel").grid(
+                row=row, column=0, sticky="w")
+            ttk.Label(body, text="= %s ชิ้นส่วน" % "{:,}".format(scale[tier]),
+                      style="CardDim.TLabel").grid(row=row, column=1, sticky="e")
 
-        ttk.Label(blue, text="มีชิ้นส่วนหินดั้งเดิมกี่ชิ้น", style="Field.TLabel").grid(
-            row=5, column=0, columnspan=2, sticky="w")
-        self.blue_amt = ttk.Entry(blue)
-        self.blue_amt.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(2, 6))
-        self.blue_amt.bind("<KeyRelease>", self.calc_blue)
+            entry = ttk.Entry(body)
+            entry.grid(row=row + 1, column=0, columnspan=2, sticky="ew", pady=(3, 2))
+            entry.bind("<KeyRelease>", lambda e, t=tier: self.upd_price(t))
+            if self.mat_price(tier) > 0:   # ราคาที่เคยเก็บไว้ในเครื่อง
+                entry.insert(0, str(self.mat_price(tier)))
 
-        self.blue_res = ttk.Label(blue, text="หลอมได้: —", style="Info.Card.TLabel")
-        self.blue_res.grid(row=7, column=0, columnspan=2, sticky="w")
-        self.blue_value = ttk.Label(blue, text="", style="Value.TLabel")
-        self.blue_value.grid(row=8, column=0, columnspan=2, sticky="w", pady=(2, 0))
+            hint = ttk.Label(body, text="—", style="CardDim.TLabel")
+            hint.grid(row=row + 2, column=0, columnspan=2, sticky="w", pady=(0, 14))
 
-        # --- การ์ดพลอยสีแดงเข้ม: ซื้อขายไม่ได้ จึงไม่มีช่องราคา ---
-        red_card, red = theme.card(
-            tab, "พลอยสีแดงเข้ม", accent=p["danger"],
-            subtitle="ชิ้นส่วนหินดั้งเดิมแดง %d ชิ้น  =  พลอยสีแดงเข้ม 1 เม็ด"
-                     % MATERIAL_RED_RATIO)
-        red_card.pack(fill=tk.X, pady=(0, 12))
-        red.columnconfigure(1, weight=1)
+            self.price_entries[tier] = entry
+            self.price_hints[tier] = hint
+            row += 3
 
-        ttk.Label(red, style="Locked.TLabel",
-                  text="🔒  ซื้อขายไม่ได้ทั้งคู่ ใช้เหรียญทองซื้อขายไม่ได้ "
-                       "จึงไม่มีราคาให้กรอก").grid(
-            row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        # ชื่อเดิม — ตัวโหลดจากชีตและตัวบันทึกอ้างถึงช่องนี้อยู่
+        self.blue_price = self.price_entries[1]
 
-        ttk.Label(red, text="มีชิ้นส่วนหินดั้งเดิมแดงกี่ชิ้น", style="Field.TLabel").grid(
-            row=1, column=0, columnspan=2, sticky="w")
-        self.red_amt = ttk.Entry(red)
-        self.red_amt.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(2, 6))
-        self.red_amt.bind("<KeyRelease>", self.calc_red)
-        self.red_res = ttk.Label(red, text="หลอมได้: —", style="Danger.Card.TLabel")
-        self.red_res.grid(row=3, column=0, columnspan=2, sticky="w")
-
-        self.save_mats_btn = ttk.Button(tab, text="💾  บันทึกราคาหินดั้งเดิม",
+        self.save_mats_btn = ttk.Button(tab, text="💾  บันทึกราคา",
                                         style="Gold.TButton", command=self.save_mats)
-        self.save_mats_btn.pack(pady=(4, 0))
+        self.save_mats_btn.pack(pady=(14, 0))
+
+    def _build_split_tab(self, nb):
+        """แยกไอเทมลงชั้นล่าง / หลอมขึ้นชั้นบน — ทำงานทั้งสองทางในหน้าเดียว"""
+        tab = ttk.Frame(nb, padding=12)
+        nb.add(tab, text="🔀  แยก/หลอม")
+
+        self.split_line = tk.StringVar(value=gd.LINE_BLUE)
+
+        pick_outer, pick = theme.card(tab, "มีอะไรอยู่บ้าง",
+                                      accent=theme.TAB_ACCENTS[3])
+        pick_outer.pack(fill=tk.X, pady=(0, 12))
+        pick.columnconfigure(1, weight=1)
+
+        line_row = ttk.Frame(pick, style="Card.TFrame")
+        line_row.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 12))
+        for value, text in ((gd.LINE_BLUE, "สายน้ำเงิน"), (gd.LINE_RED, "สายแดง")):
+            ttk.Radiobutton(line_row, text=text, value=value,
+                            variable=self.split_line, style="Card.TRadiobutton",
+                            command=self._split_line_changed).pack(
+                side=tk.LEFT, padx=(0, 18))
+
+        self.split_entries = []
+        self.split_names = []
+        self.split_worth = []
+        for tier in range(len(gd.BLUE_LADDER)):
+            name = ttk.Label(pick, text="", style="Field.TLabel")
+            name.grid(row=tier + 1, column=0, sticky="w", pady=3)
+
+            worth = ttk.Label(pick, text="", style="CardDim.TLabel")
+            worth.grid(row=tier + 1, column=1, sticky="e", padx=(8, 10), pady=3)
+
+            entry = ttk.Entry(pick, width=12, justify="right")
+            entry.grid(row=tier + 1, column=2, sticky="e", pady=3)
+            entry.bind("<KeyRelease>", self.calc_split)
+
+            self.split_names.append(name)
+            self.split_worth.append(worth)
+            self.split_entries.append(entry)
+
+        ttk.Button(pick, text="ล้างทั้งหมด", command=self.clear_split).grid(
+            row=len(gd.BLUE_LADDER) + 1, column=2, sticky="e", pady=(12, 0))
+
+        res_outer, res = theme.card(tab, "แยกออกมาได้", accent=theme.TAB_ACCENTS[0])
+        res_outer.pack(fill=tk.X)
+        res.columnconfigure(1, weight=1)
+
+        self.split_total = ttk.Label(res, text="—", style="Value.TLabel")
+        self.split_total.grid(row=0, column=0, columnspan=2, sticky="w")
+        ttk.Label(res, text="ชิ้นส่วนรวมทั้งหมด", style="CardDim.TLabel").grid(
+            row=1, column=0, columnspan=2, sticky="w", pady=(0, 12))
+
+        self.split_out = []
+        for tier in range(len(gd.BLUE_LADDER)):
+            label = ttk.Label(res, text="", style="Card.TLabel")
+            label.grid(row=tier + 2, column=0, sticky="w", pady=2)
+            value = ttk.Label(res, text="", style="Info.Card.TLabel")
+            value.grid(row=tier + 2, column=1, sticky="e", pady=2)
+            self.split_out.append((label, value))
+
+        self.split_note = ttk.Label(res, text="", style="CardDim.TLabel")
+        self.split_note.grid(row=len(gd.BLUE_LADDER) + 2, column=0, columnspan=2,
+                             sticky="w", pady=(12, 0))
+
+        self._split_line_changed()
 
     def _build_calc_tab(self, nb):
         p = theme.PALETTE
         tab = ttk.Frame(nb, padding=12)
         nb.add(tab, text="📊  ตีบวก")
-        tab.rowconfigure(1, weight=1)
+        tab.rowconfigure(4, weight=1)
         tab.columnconfigure(0, weight=1)
 
         form_card, form = theme.card(tab, "ตั้งค่าการตีบวก", accent=p["gold"])
@@ -786,16 +834,68 @@ class DarkstoryApp:
         self.tgr.set(GRADES[0])
         field(4, 0, "เกรดเป้าหมาย", self.tgr)
 
-        ttk.Button(form, text="🧮  คำนวณ", style="Gold.TButton",
-                   command=self.calc_all).grid(row=5, column=1, sticky="ew",
-                                               padx=(10, 0), pady=(2, 8))
+        for combo in (self.st, self.en, self.gr):
+            combo.bind("<<ComboboxSelected>>", self.upd_chance, add="+")
+
+        # --- หินที่จะใส่: 4 ชั้น x 2 สี เหมือนช่อง +/- ในหน้าตีบวกของเกม ---
+        stone_card, stones = theme.card(tab, "หินที่จะใส่",
+                                        accent=theme.TAB_ACCENTS[1])
+        stone_card.grid(row=1, column=0, sticky="ew", pady=(0, 12))
+        stones.columnconfigure(0, weight=1)
+
+        ttk.Label(stones, text="น้ำเงิน", style="Info.Card.TLabel").grid(
+            row=0, column=1, pady=(0, 4))
+        ttk.Label(stones, text="แดง", style="Danger.Card.TLabel").grid(
+            row=0, column=2, padx=(8, 0), pady=(0, 4))
+
+        short = ("ชิ้นส่วน", "หิน / พลอย", "ขั้นสูง", "สูงสุด")
+        scale = gd.tier_scale(gd.BLUE_LADDER)
+        self.stone_entries = {}
+        for tier in range(len(gd.BLUE_LADDER)):
+            ttk.Label(stones, text="%s   ×%s" % (short[tier],
+                                                 "{:,}".format(scale[tier])),
+                      style="Field.TLabel").grid(row=tier + 1, column=0,
+                                                 sticky="w", pady=3)
+            for col, line in ((1, gd.LINE_BLUE), (2, gd.LINE_RED)):
+                entry = ttk.Entry(stones, width=10, justify="right")
+                entry.grid(row=tier + 1, column=col, sticky="e", pady=3,
+                           padx=(8, 0))
+                entry.bind("<KeyRelease>", self.upd_chance)
+                self.stone_entries[(line, tier)] = entry
+
+        btns = ttk.Frame(stones, style="Card.TFrame")
+        btns.grid(row=len(gd.BLUE_LADDER) + 1, column=0, columnspan=3,
+                  sticky="e", pady=(12, 0))
+        ttk.Button(btns, text="เติมให้เต็ม 100%",
+                   command=self.fill_to_full).pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Button(btns, text="ล้าง", command=self.clear_stones).pack(side=tk.LEFT)
+
+        # --- แถบโอกาสสำเร็จ ---
+        chance_card, chance = theme.card(tab, "โอกาสสำเร็จ",
+                                         accent=theme.TAB_ACCENTS[0])
+        chance_card.grid(row=2, column=0, sticky="ew", pady=(0, 12))
+        chance.columnconfigure(0, weight=1)
+
+        self.chance_value = ttk.Label(chance, text="0.0000 %", style="Chance.TLabel")
+        self.chance_value.grid(row=0, column=0, sticky="w")
+
+        self.chance_bar = ttk.Progressbar(chance, orient="horizontal", maximum=100.0,
+                                          style="Chance.Horizontal.TProgressbar")
+        self.chance_bar.grid(row=1, column=0, sticky="ew", pady=(6, 6))
+
+        self.chance_detail = ttk.Label(chance, text="—", style="CardDim.TLabel")
+        self.chance_detail.grid(row=2, column=0, sticky="w")
+
+        ttk.Button(tab, text="🧮  คำนวณต้นทุน", style="Gold.TButton",
+                   command=self.calc_all).grid(row=3, column=0, sticky="ew",
+                                               pady=(0, 12))
 
         result_card, result = theme.card(tab, "ผลการคำนวณ", accent=p["info"])
-        result_card.grid(row=1, column=0, sticky="nsew")
+        result_card.grid(row=4, column=0, sticky="nsew")
         result.rowconfigure(0, weight=1)
         result.columnconfigure(0, weight=1)
 
-        self.txt = tk.Text(result, height=12, wrap="none", font="ds.mono",
+        self.txt = tk.Text(result, height=8, wrap="none", font="ds.mono",
                            state="disabled", relief="flat", padx=10, pady=8,
                            bg=p["panel"], fg=p["text"],
                            insertbackground=p["gold"], selectbackground=p["border"],
@@ -807,6 +907,7 @@ class DarkstoryApp:
         self.txt.configure(yscrollcommand=bar.set)
 
         self.on_mode_change()
+        self.upd_chance()
 
     # ---------------- สถานะ / busy ----------------
 
@@ -853,8 +954,8 @@ class DarkstoryApp:
     def refresh_all(self):
         """วาดทุกอย่างที่ขึ้นกับเรตใหม่ — กันไม่ให้มีเลขบาทสองค่าอยู่บนจอพร้อมกัน"""
         self.upd_tree()
-        self.upd_red()
-        self.upd_blue()
+        self.refresh_prices()
+        self.calc_split()
         self.gold_to_thb()
 
     def gold_to_thb(self, event=None):
@@ -999,88 +1100,215 @@ class DarkstoryApp:
         self.upd_tree()
         self._save_local()
 
-    # ---------------- แท็บวัสดุ ----------------
+    # ---------------- แท็บราคา ----------------
 
-    def upd_red(self, event=None):
-        """พลอยสีแดงเข้มซื้อขายไม่ได้ จึงไม่มีราคา เหลือแค่คำนวณจำนวน"""
-        self.calc_red()
+    def upd_price(self, tier, event=None):
+        """อัปเดตราคาหินชั้นหนึ่ง แล้ววาดบรรทัดสรุปใต้ช่องใหม่"""
+        entry = self.price_entries[tier]
+        hint = self.price_hints[tier]
+        worth = gd.tier_pieces(gd.BLUE_LADDER, tier)
 
-    def upd_blue(self, event=None):
-        text = self.blue_price.get().strip()
+        text = entry.get().strip()
         if not text:
-            self.blue_label.config(text="—", foreground="")
-        else:
-            value = parse_num(text, None)
-            if value is None or value < 0:
-                # เก็บราคาเดิมไว้ และอย่าโชว์ตัวเลข เพื่อไม่ให้อ่านเป็นคำตอบ
-                self.blue_price.config(foreground=theme.PALETTE["danger"])
-                self.blue_label.config(
-                    text="ราคาไม่ถูกต้อง — ยังใช้ %s ทองอยู่" % money(self.mat_blue_price),
-                    foreground=theme.PALETTE["danger"])
-                self.calc_blue()
-                return
-            self.blue_price.config(foreground="")
-            self.mat_blue_price = value
-            self.blue_label.config(
-                text="= %s บาท/ก้อน   •   คิดเป็นชิ้นส่วนละ %s ทอง (นับเป็นทุนได้ "
-                     "แม้ขายไม่ได้)"
-                     % (money(value * self.rate_gold_thb),
-                        money(value / MATERIAL_BLUE_RATIO)),
-                foreground="")
-        self.calc_blue()
+            entry.config(foreground="")
+            self.mat_prices[tier] = 0.0
+            hint.config(text="—", foreground="")
+            self.upd_chance()
+            return
 
-    def calc_red(self, event=None):
-        text = self.red_amt.get().strip()
-        if not text:
-            self.red_res.config(text="หลอมได้: —")
+        value = parse_num(text, None)
+        if value is None or value < 0:
+            # เก็บราคาเดิมไว้ และอย่าโชว์ตัวเลข เพื่อไม่ให้อ่านเป็นคำตอบ
+            entry.config(foreground=theme.PALETTE["danger"])
+            hint.config(text="ราคาไม่ถูกต้อง — ยังใช้ %s ทองอยู่"
+                             % money(self.mat_price(tier)),
+                        foreground=theme.PALETTE["danger"])
+            self.upd_chance()
             return
-        amount = parse_count(text, None)
-        if amount is None:
-            self.red_res.config(text="หลอมได้: — (จำนวนไม่ถูกต้อง)")
-            return
-        whole, left = gd.melt(amount, MATERIAL_RED_RATIO)
-        self.red_res.config(
-            text="หลอมได้ %s เม็ด  +  เศษ %d ชิ้น  •  ไม่มีมูลค่าเป็นเหรียญทอง"
-                 % ("{:,}".format(whole), left))
 
-    def calc_blue(self, event=None):
-        text = self.blue_amt.get().strip()
-        if not text:
-            self.blue_res.config(text="หลอมได้: —")
-            self.blue_value.config(text="")
-            return
-        amount = parse_count(text, None)
-        if amount is None:
-            self.blue_res.config(text="หลอมได้: — (จำนวนไม่ถูกต้อง)")
-            self.blue_value.config(text="")
-            return
-        whole, left = gd.melt(amount, MATERIAL_BLUE_RATIO)
-        self.blue_res.config(
-            text="หลอมได้ %s ก้อน  +  เศษ %d ชิ้น"
-                 % ("{:,}".format(whole), left))
-        if self.mat_blue_price > 0:
-            # เศษที่หลอมไม่ครบก็เป็นทุน คิดตามสัดส่วนไม่ปัดทิ้ง
-            total = gd.pieces_value(amount, self.mat_blue_price, MATERIAL_BLUE_RATIO)
-            self.blue_value.config(
-                text="%s ทอง  =  %s บาท" % (money(total),
-                                            money(total * self.rate_gold_thb)))
-        else:
-            self.blue_value.config(text="")
+        entry.config(foreground="")
+        self.mat_prices[tier] = value
+        hint.config(text="%s บาท   •   %s ทอง/ชิ้นส่วน"
+                         % (money(value * self.rate_gold_thb),
+                            money(value / float(worth))),
+                    foreground="")
+        self.upd_chance()
+
+    def refresh_prices(self):
+        """วาดบรรทัดใต้ช่องราคาทุกชั้นใหม่ — เรียกตอนเรตเปลี่ยนหรือโหลดข้อมูลเสร็จ"""
+        for tier in sorted(self.price_entries):
+            self.upd_price(tier)
 
     def save_mats(self):
-        text = self.blue_price.get().strip()
-        value = parse_num(text, None)
-        if text and (value is None or value < 0):
-            messagebox.showwarning("แจ้งเตือน",
-                                   "ราคาหินดั้งเดิมกรอกไม่ถูกต้อง แก้ให้เรียบร้อยก่อนบันทึก")
+        for tier in sorted(self.price_entries):
+            text = self.price_entries[tier].get().strip()
+            value = parse_num(text, None)
+            if text and (value is None or value < 0):
+                messagebox.showwarning(
+                    "แจ้งเตือน",
+                    "ราคา%s กรอกไม่ถูกต้อง แก้ให้เรียบร้อยก่อนบันทึก"
+                    % gd.BLUE_LADDER[tier]["name"])
+                return
+
+        tiers = sorted(self.price_entries)
+        if not self._confirm_overwrite("materials", len(tiers)):
             return
-        if not self._confirm_overwrite("materials", 1):
+        # ต้องส่งทุกชั้นที่ซื้อขายได้ เพราะฝั่งชีตล้างข้อมูลเดิมก่อนเขียนทับ
+        # ถ้าส่งไม่ครบ ราคาชั้นที่ขาดไปจะหายจากชีต
+        rows = [["name", "price_gold_per_unit"]]
+        rows += [[gd.BLUE_LADDER[t]["name"], self.mat_price(t)] for t in tiers]
+        self._push("materials", rows, "บันทึกราคาแล้ว", on_success=self._save_local)
+
+    # ---------------- แท็บแยก/หลอม ----------------
+
+    def _current_ladder(self):
+        return gd.ladder(self.split_line.get())
+
+    def _split_line_changed(self):
+        """สลับสาย — เปลี่ยนชื่อชั้นทั้งหมดแล้วคิดใหม่"""
+        rows = self._current_ladder()
+        scale = gd.tier_scale(rows)
+        for tier, spec in enumerate(rows):
+            self.split_names[tier].config(text=spec["name"])
+            self.split_worth[tier].config(
+                text="= %s ชิ้นส่วน" % "{:,}".format(scale[tier]))
+            self.split_out[tier][0].config(text=spec["name"])
+        self.calc_split()
+
+    def clear_split(self):
+        for entry in self.split_entries:
+            entry.delete(0, tk.END)
+        self.calc_split()
+
+    def calc_split(self, event=None):
+        """รวมของทุกชั้นเป็นชิ้นส่วน แล้วแยกกลับลงมาใหม่
+
+        ในเกมแยกลงได้ไม่สูญเสีย ยอดชิ้นส่วนรวมจึงเท่าเดิมเสมอไม่ว่าจะถือชั้นไหน
+        """
+        rows = self._current_ladder()
+        counts = []
+        bad = False
+        for entry in self.split_entries:
+            text = entry.get().strip()
+            if not text:
+                counts.append(0)
+                entry.config(foreground="")
+                continue
+            amount = parse_count(text, None)
+            if amount is None:
+                counts.append(0)
+                entry.config(foreground=theme.PALETTE["danger"])
+                bad = True
+            else:
+                counts.append(amount)
+                entry.config(foreground="")
+
+        total = gd.to_pieces(rows, counts)
+        self.split_total.config(text="{:,}".format(total))
+
+        parts = gd.split_down(rows, total)
+        for tier, spec in enumerate(rows):
+            self.split_out[tier][1].config(
+                text="%s %s" % ("{:,}".format(parts[tier]), spec["unit"]))
+
+        if bad:
+            self.split_note.config(text="มีช่องที่กรอกไม่ใช่จำนวนเต็ม",
+                                   foreground=theme.PALETTE["danger"])
+        elif total > 0 and self.split_line.get() == gd.LINE_BLUE \
+                and self.mat_blue_price > 0:
+            # เศษที่หลอมไม่ครบก็เป็นทุน คิดตามสัดส่วนไม่ปัดทิ้ง
+            value = gd.pieces_value(total, self.mat_blue_price, MATERIAL_BLUE_RATIO)
+            self.split_note.config(
+                text="≈ %s ทอง  =  %s บาท" % (money(value),
+                                              money(value * self.rate_gold_thb)),
+                foreground="")
+        else:
+            self.split_note.config(text="", foreground="")
+
+    # ---------------- แถบโอกาสสำเร็จ ----------------
+
+    def _needed_pieces(self):
+        """ชิ้นส่วนที่ทำให้เต็ม 100% — None ถ้าตัวเลือกยังไม่ครบ"""
+        try:
+            return gd.upgrade_pieces(int(self.st.get()), int(self.en.get()),
+                                     GRADES.index(self.gr.get()))
+        except (ValueError, CalcError):
+            return None
+
+    def _stones_put_in(self):
+        """รวมหินที่กรอกทั้ง 8 ช่องเป็นจำนวนชิ้นส่วน
+
+        สายแดงกับสายน้ำเงินให้โอกาสเท่ากันชิ้นต่อชิ้น จึงบวกรวมกันได้ตรงๆ
+        คืน (จำนวนชิ้นส่วน, มีช่องที่กรอกผิดหรือไม่)
+        """
+        total = 0
+        bad = False
+        for line in (gd.LINE_BLUE, gd.LINE_RED):
+            rows = gd.ladder(line)
+            counts = []
+            for tier in range(len(rows)):
+                entry = self.stone_entries[(line, tier)]
+                text = entry.get().strip()
+                if not text:
+                    counts.append(0)
+                    entry.config(foreground="")
+                    continue
+                amount = parse_count(text, None)
+                if amount is None:
+                    counts.append(0)
+                    entry.config(foreground=theme.PALETTE["danger"])
+                    bad = True
+                else:
+                    counts.append(amount)
+                    entry.config(foreground="")
+            total += gd.to_pieces(rows, counts)
+        return total, bad
+
+    def upd_chance(self, event=None):
+        # ถูกเรียกจาก upd_price ได้ตั้งแต่ยังสร้างแท็บตีบวกไม่เสร็จ
+        if not hasattr(self, "chance_bar"):
             return
-        # บันทึกเฉพาะหินดั้งเดิม — พลอยสีแดงเข้มซื้อขายไม่ได้ จึงไม่มีราคาให้เก็บ
-        rows = [["name", "price_gold_per_unit"],
-                [gd.BLUE_UNIT, self.mat_blue_price]]
-        self._push("materials", rows, "บันทึกราคาหินดั้งเดิมแล้ว",
-                   on_success=self._save_local)
+
+        have, bad = self._stones_put_in()
+        needed = self._needed_pieces()
+
+        if needed is None:
+            self.chance_value.config(text="—")
+            self.chance_bar.config(value=0)
+            self.chance_detail.config(text="", foreground="")
+            return
+
+        pct = gd.success_chance(have, needed)
+        self.chance_value.config(text="%.4f %%" % pct)
+        self.chance_bar.config(value=pct)
+
+        if bad:
+            self.chance_detail.config(text="มีช่องที่กรอกไม่ใช่จำนวนเต็ม",
+                                      foreground=theme.PALETTE["danger"])
+            return
+
+        detail = "ใส่ %s  /  ต้องใช้ %s ชิ้นส่วน" % ("{:,}".format(have),
+                                                    "{:,}".format(needed))
+        if have < needed:
+            detail += "   •   ขาดอีก %s" % "{:,}".format(needed - have)
+        self.chance_detail.config(text=detail, foreground="")
+
+    def fill_to_full(self):
+        """เติมหินสายน้ำเงินให้พอดี 100% แล้วล้างสายแดงออก"""
+        needed = self._needed_pieces()
+        if not needed:
+            return
+        parts = gd.split_down(gd.BLUE_LADDER, needed)
+        for tier in range(len(gd.BLUE_LADDER)):
+            self._set_entry(self.stone_entries[(gd.LINE_BLUE, tier)],
+                            str(parts[tier]) if parts[tier] else "")
+            self._set_entry(self.stone_entries[(gd.LINE_RED, tier)], "")
+        self.upd_chance()
+
+    def clear_stones(self):
+        for entry in self.stone_entries.values():
+            entry.delete(0, tk.END)
+        self.upd_chance()
 
     # ---------------- แท็บคำนวณ ----------------
 
@@ -1118,7 +1346,7 @@ class DarkstoryApp:
         if self.mat_blue_price <= 0:
             messagebox.showwarning(
                 "แจ้งเตือน",
-                "กรุณาใส่ราคาหินดั้งเดิมในแท็บ ⚒️ วัสดุ ก่อน\n"
+                "กรุณาใส่ราคาหินดั้งเดิมในแท็บ 💰 ราคา ก่อน\n"
                 "ไม่งั้นมูลค่าวัสดุจะออกมาเป็น 0 ซึ่งไม่ใช่ราคาจริง")
             return
 
@@ -1186,14 +1414,6 @@ class DarkstoryApp:
             "                    {:>16} บาท".format(
                 money(total_gold * self.rate_gold_thb)),
             rule,
-            "",
-            "  หมายเหตุ",
-            "    • คิดราคาจาก %s ก้อนละ %s ทอง" % (gd.BLUE_UNIT,
-                                                       money(self.mat_blue_price)),
-            "      เศษที่หลอมไม่ครบก็นับเป็นทุนตามสัดส่วนด้วย",
-            "    • %s และ %s ซื้อขายไม่ได้" % (gd.RED_PIECE, gd.RED_UNIT),
-            "      จึงไม่มีมูลค่าเป็นเหรียญทอง",
-            "    • เรตที่ใช้ 1 ทอง = %s บาท" % self.rate_gold_thb,
         ]
         self._write_result("\n".join(out))
         self.set_status("คำนวณ +%d → +%d เรียบร้อย" % (start, end))
@@ -1321,14 +1541,19 @@ class DarkstoryApp:
                 items.append({"name": name, "price": price})
             self.items = items
         elif sheet == "materials":
+            by_name = {gd.BLUE_LADDER[t]["name"]: t for t in self.price_entries}
             for row in rows:
                 price = to_num(row.get("price_gold_per_unit"), None)
                 if price is None or price < 0:
                     continue
-                # แถวพลอยสีแดงเข้มในชีตเก่าถูกข้าม — วัสดุนั้นซื้อขายไม่ได้
-                if row.get("name") == gd.BLUE_UNIT:
-                    self.mat_blue_price = price
-                    self._set_entry(self.blue_price, str(price))
+                # ชื่อที่ไม่ได้อยู่ในบันไดสายน้ำเงิน (เช่นแถวพลอยสีแดงเข้มในชีตเก่า)
+                # ถูกข้าม — ของสายแดงซื้อขายไม่ได้ จึงไม่มีราคาให้เก็บ
+                tier = by_name.get(str(row.get("name", "")).strip())
+                if tier is None:
+                    continue
+                self.mat_prices[tier] = price
+                self._set_entry(self.price_entries[tier], str(price))
+            self.refresh_prices()
 
     # ---------------- เก็บข้อมูลในเครื่อง ----------------
 
@@ -1337,7 +1562,21 @@ class DarkstoryApp:
         rate = to_num(data.get("rate_gold_thb"), None)
         if rate and rate > 0:
             self.rate_gold_thb = rate
-        self.mat_blue_price = to_num(data.get("mat_blue_price"), 0.0) or 0.0
+        # ฟอร์แมตเก่าเก็บราคาชั้นเดียวชื่อ mat_blue_price — ย้ายเข้าชั้น 1 ให้เอง
+        # ไม่งั้นคนที่อัปเดตจากเวอร์ชันก่อนจะเปิดมาเจอช่องราคาว่างเปล่า
+        legacy = to_num(data.get("mat_blue_price"), 0.0) or 0.0
+        if legacy > 0:
+            self.mat_prices[1] = legacy
+        saved = data.get("mat_prices")
+        if isinstance(saved, dict):
+            for key, value in saved.items():
+                price = to_num(value, None)
+                try:
+                    tier = int(key)
+                except (TypeError, ValueError):
+                    continue
+                if price is not None and price >= 0:
+                    self.mat_prices[tier] = price
         for row in data.get("items", []) if isinstance(data.get("items"), list) else []:
             if isinstance(row, dict) and row.get("name"):
                 price = to_num(row.get("price"), None)
@@ -1347,7 +1586,9 @@ class DarkstoryApp:
     def _save_local(self):
         write_json(LOCAL_PATH, {
             "rate_gold_thb": self.rate_gold_thb,
+            # คีย์เดิมเก็บต่อไว้ เผื่อเปิดด้วยโปรแกรมเวอร์ชันก่อนหน้า
             "mat_blue_price": self.mat_blue_price,
+            "mat_prices": {str(k): v for k, v in self.mat_prices.items()},
             "items": self.items,
         })
 
