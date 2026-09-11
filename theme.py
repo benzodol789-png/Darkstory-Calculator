@@ -277,6 +277,10 @@ def apply_theme(root, fonts):
     style.configure("Status.TLabel", background=p["void"], foreground=p["text_dim"],
                     font="ds.small", padding=(10, 4))
 
+    # เครดิตคนทำ มุมขวาล่าง — จางกว่าแถบสถานะ ให้เห็นแต่ไม่แย่งสายตา
+    style.configure("Credit.TLabel", background=p["void"], foreground=p["line"],
+                    font="ds.small", padding=(10, 4))
+
     # ปุ่มตัวเลือกในการ์ด — ต้องตั้ง background เอง ไม่งั้น clam ให้พื้นเทาตัดกับการ์ด
     style.configure("Card.TRadiobutton", background=p["card"], foreground=p["text"],
                     font="ds.bold", focuscolor=p["gold"])
@@ -316,6 +320,75 @@ STONE_COLORS = {
 _icon_cache = {}
 
 
+def _trim_border(img, tol=18):
+    """ตัดขอบที่เป็นสีเดียวกับมุมภาพออก — รูปแคปจากเกมมักมีกรอบเกินมา"""
+    w, h = img.size
+    px = img.load()
+    corner = px[0, 0]
+
+    def same(a, b):
+        if len(a) > 3 and a[3] < 12 and len(b) > 3 and b[3] < 12:
+            return True             # โปร่งใสทั้งคู่ = ขอบเหมือนกัน
+        return all(abs(a[i] - b[i]) <= tol for i in range(3))
+
+    left, right, top, bottom = 0, w - 1, 0, h - 1
+    while left < right and all(same(px[left, y], corner) for y in range(h)):
+        left += 1
+    while right > left and all(same(px[right, y], corner) for y in range(h)):
+        right -= 1
+    while top < bottom and all(same(px[x, top], corner) for x in range(w)):
+        top += 1
+    while bottom > top and all(same(px[x, bottom], corner) for x in range(w)):
+        bottom -= 1
+    if right - left < 4 or bottom - top < 4:
+        return img                  # ตัดแล้วแทบไม่เหลือ แปลว่าเดาผิด เอาของเดิม
+    return img.crop((left, top, right + 1, bottom + 1))
+
+
+def _recolor(img, hue):
+    """เปลี่ยนสีภาพไปเป็นเฉดเดียว โดยคงความสว่างและเงาเดิมไว้
+
+    ในเกมหินแต่ละชั้นเป็นรูปเดียวกันต่างแค่สี จึงเอารูปสายแดงมาทำสายน้ำเงินได้
+    hue เป็นสเกล 0-255 ของ PIL (ไม่ใช่ 0-360)
+    """
+    rgb = img.convert("RGB")
+    h, s_ch, v = rgb.convert("HSV").split()
+    h_px, s_px = h.load(), s_ch.load()
+    w, ht = img.size
+    for y in range(ht):
+        for x in range(w):
+            if s_px[x, y] > 40:     # เฉพาะส่วนที่มีสี ไม่แตะกรอบสีเทา/ดำ
+                h_px[x, y] = hue
+    out = Image.merge("HSV", (h, s_ch, v)).convert("RGBA")
+    out.putalpha(img.split()[3] if img.mode == "RGBA"
+                 else Image.new("L", img.size, 255))
+    return out
+
+
+# สายน้ำเงินใช้รูปของสายแดงมาเปลี่ยนสีได้ ถ้าไม่มีไฟล์ของตัวเอง
+BLUE_HUE = 132          # ~186 องศา ฟ้าเรืองแสงแบบในเกม
+
+
+def _load_stone_image(line, tier):
+    """หาไฟล์รูปหิน คืน PIL Image ที่ตัดขอบแล้ว หรือ None ถ้าไม่มี"""
+    path = asset("stone_%s_%d.*" % (line, tier))
+    recolor_to = None
+    if not path and line == "blue":
+        # ไม่มีรูปสายน้ำเงินชั้นนี้ -> ยืมของสายแดงมาเปลี่ยนเป็นสีฟ้า
+        path = asset("stone_red_%d.*" % tier)
+        recolor_to = BLUE_HUE
+    if not path:
+        return None
+    try:
+        img = Image.open(path).convert("RGBA")
+        img = _trim_border(img)
+        if recolor_to is not None:
+            img = _recolor(img, recolor_to)
+        return img
+    except Exception:
+        return None                 # ไฟล์เสีย -> ให้ผู้เรียกไปวาดเอง
+
+
 def stone_icon(line, tier, size=22):
     """ไอคอนหินชั้นหนึ่ง คืน PhotoImage หรือ None ถ้าไม่มี PIL
 
@@ -328,15 +401,11 @@ def stone_icon(line, tier, size=22):
     if not HAVE_PIL:
         return None
 
-    path = asset("stone_%s_%d.*" % (line, tier))
-    if path:
-        try:
-            img = Image.open(path).convert("RGBA")
-            img = img.resize((size, size), Image.LANCZOS)
-            _icon_cache[key] = ImageTk.PhotoImage(img)
-            return _icon_cache[key]
-        except Exception:
-            pass                      # ไฟล์เสีย -> ตกไปวาดเอง
+    img = _load_stone_image(line, tier)
+    if img is not None:
+        img = img.resize((size, size), Image.LANCZOS)
+        _icon_cache[key] = ImageTk.PhotoImage(img)
+        return _icon_cache[key]
 
     ramp = STONE_COLORS.get(line, STONE_COLORS["blue"])
     color = ramp[min(tier, len(ramp) - 1)]

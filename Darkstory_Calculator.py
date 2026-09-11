@@ -12,6 +12,7 @@ import json
 import logging
 import logging.handlers
 import os
+import subprocess
 import sys
 import threading
 import tkinter as tk
@@ -33,7 +34,10 @@ from game_data import (
     CalcError,
 )
 
-CURRENT_VERSION = "1.1.0"
+GITHUB_REPO = "benzodol789-png/Darkstory-Calculator"
+APP_NAME = "DARKSTORY CODEX"
+APP_AUTHOR = "โซโuoา"
+CURRENT_VERSION = "1.2.0"
 DEFAULT_RATE = 0.85
 
 # timeout ต่อการเชื่อมต่อหนึ่งครั้ง (วินาที) — เป็น socket timeout ไม่ใช่เพดานรวม
@@ -252,6 +256,131 @@ def build_url(base, params):
     ))
 
 
+# ---------------------------------------------------------------------------
+# อัปเดตตัวโปรแกรมจาก GitHub Releases
+# ---------------------------------------------------------------------------
+
+RELEASE_API = "https://api.github.com/repos/%s/releases/latest" % GITHUB_REPO
+UPDATE_TIMEOUT = 60          # โหลด .exe หลายสิบ MB ต้องใจเย็นกว่าเรียกชีต
+
+
+def ua_header():
+    """GitHub ตอบ 403 ถ้าไม่ส่ง User-Agent มาด้วย"""
+    return "%s/%s" % (APP_NAME.replace(" ", "-"), CURRENT_VERSION)
+
+
+def parse_version(text):
+    """'v1.2.0' -> (1, 2, 0) — ตัวที่ไม่ใช่ตัวเลขถูกตัดทิ้ง เทียบด้วย tuple ได้เลย"""
+    parts = []
+    for chunk in str(text or "").strip().lstrip("vV").split("."):
+        digits = "".join(ch for ch in chunk if ch.isdigit())
+        parts.append(int(digits) if digits else 0)
+    return tuple(parts[:4]) if parts else (0,)
+
+
+def fetch_latest_release():
+    """ถาม GitHub ว่ารีลีสล่าสุดคือเวอร์ชันอะไร คืน (ข้อมูล, ข้อความผิดพลาด)"""
+    req = urllib.request.Request(RELEASE_API, headers={
+        "Accept": "application/vnd.github+json",
+        "User-Agent": ua_header(),
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=UPDATE_TIMEOUT) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return None, "ยังไม่มีเวอร์ชันไหนเผยแพร่บน GitHub"
+        if exc.code == 403:
+            return None, "GitHub จำกัดจำนวนครั้งที่เรียกชั่วคราว ลองใหม่อีกสักครู่"
+        return None, "GitHub ตอบกลับ HTTP %s" % exc.code
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        return None, "เชื่อมต่อ GitHub ไม่สำเร็จ: %s" % exc
+
+    asset = None
+    for item in data.get("assets") or []:
+        if str(item.get("name", "")).lower().endswith(".exe"):
+            asset = item
+            break
+    return {
+        "version": data.get("tag_name") or "",
+        "url": (asset or {}).get("browser_download_url"),
+        "size": (asset or {}).get("size") or 0,
+        "notes": (data.get("body") or "").strip(),
+    }, None
+
+
+def download_file(url, dest, expected_size=0):
+    """โหลดไฟล์ลง dest — คืนข้อความผิดพลาด หรือ None ถ้าสำเร็จ"""
+    req = urllib.request.Request(url, headers={
+        "Accept": "application/octet-stream",
+        "User-Agent": ua_header(),
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=UPDATE_TIMEOUT) as resp:
+            with open(dest, "wb") as fh:
+                while True:
+                    chunk = resp.read(262144)
+                    if not chunk:
+                        break
+                    fh.write(chunk)
+    except (urllib.error.URLError, urllib.error.HTTPError, OSError) as exc:
+        return "โหลดไฟล์ไม่สำเร็จ: %s" % exc
+
+    # เน็ตหลุดกลางทางจะได้ไฟล์ไม่ครบ ถ้าเอาไปทับตัวเก่าจะเปิดโปรแกรมไม่ขึ้นอีกเลย
+    got = os.path.getsize(dest)
+    if expected_size and got != expected_size:
+        try:
+            os.remove(dest)
+        except OSError:
+            pass
+        return ("ไฟล์ที่โหลดมาไม่ครบ (ได้ %s จาก %s ไบต์) ยังไม่ได้เปลี่ยนตัวโปรแกรม"
+                % ("{:,}".format(got), "{:,}".format(expected_size)))
+    return None
+
+
+def swap_exe(new_path):
+    """เอา .exe ตัวใหม่เข้าแทนตัวที่กำลังรันอยู่ แล้วเปิดตัวใหม่ขึ้นมา
+
+    Windows ล็อกไฟล์ .exe ที่รันอยู่ ลบหรือเขียนทับตรงๆ ไม่ได้
+    แต่ "เปลี่ยนชื่อ" ได้ จึงย้ายตัวเก่าไปเป็น .old ก่อนแล้ววางตัวใหม่ลงชื่อเดิม
+    ถ้าวางไม่สำเร็จก็ย้ายตัวเก่ากลับมา จะได้ไม่เหลือเครื่องที่เปิดโปรแกรมไม่ได้
+    """
+    current = os.path.abspath(sys.executable)
+    backup = current + ".old"
+    if os.path.exists(backup):
+        os.remove(backup)
+    os.rename(current, backup)
+    try:
+        os.replace(new_path, current)
+    except OSError:
+        os.rename(backup, current)
+        raise
+    subprocess.Popen([current], close_fds=True)
+
+
+def cleanup_old_exe():
+    """ลบไฟล์ .old ที่ค้างจากการอัปเดตรอบก่อน"""
+    if not getattr(sys, "frozen", False):
+        return
+    backup = os.path.abspath(sys.executable) + ".old"
+    try:
+        if os.path.exists(backup):
+            os.remove(backup)
+    except OSError:
+        pass            # ยังโดนล็อกอยู่ รอบหน้าค่อยลบ
+
+
+def unpack_async(result, fail_value):
+    """แกะผลจาก run_async — sentinel ตอน thread พังก็เป็น tuple เหมือนผลปกติ
+    ถ้าไม่แยกให้ดีจะอ่านค่าผิดแล้วรายงานว่า "สำเร็จ" ทั้งที่พังไปแล้ว
+    """
+    if isinstance(result, tuple) and len(result) == 2:
+        if result[0] == "__error__":
+            return fail_value, str(result[1])
+        return result
+    return fail_value, str(result)
+
+
 def load_config():
     cfg = read_json(CONFIG_PATH, {})
     return {
@@ -463,11 +592,12 @@ class DarkstoryApp:
 
         self.items_dirty = False        # มีไอเทมที่ยังไม่ได้บันทึกขึ้นเซิร์ฟเวอร์
         self.loaded_from_server = False  # กันไม่ให้เขียนทับชีตก่อนเคยโหลด
+        self.pending_update = None       # ข้อมูลรีลีสใหม่ที่เจอจาก GitHub
         self.busy = False
 
         self._load_local()
 
-        root.title("Darkstory Calculator v%s" % CURRENT_VERSION)
+        root.title("%s v%s" % (APP_NAME.title(), CURRENT_VERSION))
         root.geometry("620x880")
         self._set_icon()
 
@@ -483,6 +613,8 @@ class DarkstoryApp:
 
         if not self.api.configured:
             self.set_status("ยังไม่ได้ตั้งค่าลิงก์เซิร์ฟเวอร์ใน darkstory_config.json", warn=True)
+
+        root.after(1500, lambda: self.check_updates(auto=True))
 
     # ราคา "หินดั้งเดิม" (บันไดชั้น 1) — คงชื่อเดิมไว้เพราะแท็บตีบวก การบันทึก
     # และไฟล์ในเครื่องอ้างถึงอยู่หลายจุด เปลี่ยนเป็น property จึงไม่ต้องแก้ตามทั้งไฟล์
@@ -534,6 +666,9 @@ class DarkstoryApp:
         self.load_btn = ttk.Button(toolbar, text="🔄  โหลดข้อมูล",
                                    style="Gold.TButton", command=self.load_from_server)
         self.load_btn.pack(side=tk.RIGHT)
+        self.update_btn = ttk.Button(toolbar, text="⬇  ตรวจอัปเดต",
+                                     command=lambda: self.check_updates(auto=False))
+        self.update_btn.pack(side=tk.RIGHT, padx=(0, 8))
 
         nb = ttk.Notebook(self.body)
         nb.pack(fill=tk.BOTH, expand=True)
@@ -546,6 +681,8 @@ class DarkstoryApp:
 
         self.status = ttk.Label(canvas, text="พร้อมใช้งาน", anchor="w",
                                 style="Status.TLabel")
+        self.credit = ttk.Label(canvas, text="by %s" % APP_AUTHOR, anchor="e",
+                                style="Credit.TLabel")
 
         canvas.bind("<Configure>", self._on_shell_resize)
 
@@ -561,7 +698,7 @@ class DarkstoryApp:
         self._banner_item = None
 
         self._title_item = canvas.create_text(
-            22, 26, anchor="w", text="⚔  DARKSTORY CALCULATOR",
+            22, 26, anchor="w", text="⚔  %s" % APP_NAME,
             font="ds.title", fill=p["gold_hi"])
 
         self.win_buttons = []
@@ -651,8 +788,13 @@ class DarkstoryApp:
         body_h = height - top - status_h - pad
         self.body.place(x=pad, y=top,
                         width=max(1, width - pad * 2), height=max(1, body_h))
+        credit_w = self.fonts.fonts["ds.small"].measure(
+            self.credit.cget("text")) + 24
         self.status.place(x=pad, y=height - status_h - 5,
-                          width=max(1, width - pad * 2), height=status_h)
+                          width=max(1, width - pad * 2 - credit_w),
+                          height=status_h)
+        self.credit.place(x=width - pad - credit_w, y=height - status_h - 5,
+                          width=credit_w, height=status_h)
         self._banner_h = banner_h
 
     def _apply_font_scale(self):
@@ -977,41 +1119,43 @@ class DarkstoryApp:
         stone_card, stones = theme.card(tab, "หินที่จะใส่",
                                         accent=theme.TAB_ACCENTS[1])
         stone_card.grid(row=1, column=0, sticky="ew", pady=(0, 12))
-        stones.columnconfigure(0, weight=1)
+        stones.columnconfigure(1, weight=1)
 
-        ttk.Label(stones, text="น้ำเงิน", style="Info.Card.TLabel").grid(
-            row=0, column=1, pady=(0, 4))
-        ttk.Label(stones, text="แดง (ใช้แล้วไอเทมถูกผนึก)",
-                  style="Danger.Card.TLabel").grid(
-            row=0, column=2, padx=(8, 0), pady=(0, 4))
-
-        short = ("ชิ้นส่วน", "หิน / พลอย", "ขั้นสูง", "สูงสุด")
         scale = gd.tier_scale(gd.BLUE_LADDER)
         self.stone_entries = {}
-        for tier in range(len(gd.BLUE_LADDER)):
-            ttk.Label(stones, text="%s   ×%s" % (short[tier],
-                                                 "{:,}".format(scale[tier])),
-                      style="Field.TLabel").grid(row=tier + 1, column=0,
-                                                 sticky="w", pady=3)
-            for col, line in ((1, gd.LINE_BLUE), (2, gd.LINE_RED)):
-                cell = ttk.Frame(stones, style="Card.TFrame")
-                cell.grid(row=tier + 1, column=col, sticky="e", pady=3,
-                          padx=(8, 0))
+        row = 0
+        for line, head, head_style in (
+                (gd.LINE_BLUE, "สายน้ำเงิน — ซื้อขายด้วยเหรียญทองได้",
+                 "Info.Card.TLabel"),
+                (gd.LINE_RED, "สายแดง — ใช้แล้วอุปกรณ์ถูกผนึก ขายต่อไม่ได้",
+                 "Danger.Card.TLabel")):
+            ttk.Label(stones, text=head, style=head_style).grid(
+                row=row, column=0, columnspan=3, sticky="w",
+                pady=(0 if row == 0 else 14, 4))
+            row += 1
+            for tier, spec in enumerate(gd.ladder(line)):
+                label = ttk.Label(stones, text=spec["name"], style="Field.TLabel")
                 icon = theme.stone_icon(line, tier)
                 if icon is not None:
-                    badge = ttk.Label(cell, image=icon, style="Card.TLabel")
-                    badge.image = icon      # กัน Tk เก็บกวาดรูปทิ้ง
-                    badge.pack(side=tk.LEFT, padx=(0, 5))
-                entry = ttk.Entry(cell, width=9, justify="right")
-                entry.pack(side=tk.LEFT)
+                    label.config(image=icon, compound="left",
+                                 padding=(0, 0, 6, 0))
+                    label.image = icon      # กัน Tk เก็บกวาดรูปทิ้ง
+                label.grid(row=row, column=0, sticky="w", pady=2)
+
+                ttk.Label(stones, text="×%s" % "{:,}".format(scale[tier]),
+                          style="CardDim.TLabel").grid(
+                    row=row, column=1, sticky="e", padx=(10, 10))
+
+                entry = ttk.Entry(stones, width=10, justify="right")
+                entry.grid(row=row, column=2, sticky="e", pady=2)
                 entry.bind("<KeyRelease>", self.upd_chance)
                 self.stone_entries[(line, tier)] = entry
+                row += 1
 
         btns = ttk.Frame(stones, style="Card.TFrame")
-        btns.grid(row=len(gd.BLUE_LADDER) + 1, column=0, columnspan=3,
-                  sticky="e", pady=(12, 0))
-        ttk.Button(btns, text="เติมให้เต็ม 100%",
-                   command=self.fill_to_full).pack(side=tk.LEFT, padx=(0, 8))
+        btns.grid(row=row, column=0, columnspan=3, sticky="e", pady=(14, 0))
+        ttk.Button(btns, text="🧮  คำนวณ", style="Gold.TButton",
+                   command=self.calc_chance).pack(side=tk.LEFT, padx=(0, 8))
         ttk.Button(btns, text="ล้าง", command=self.clear_stones).pack(side=tk.LEFT)
 
         # --- แถบโอกาสสำเร็จ ---
@@ -1042,7 +1186,8 @@ class DarkstoryApp:
     def set_busy(self, busy, text=None):
         self.busy = busy
         state = tk.DISABLED if busy else tk.NORMAL
-        for widget in (self.load_btn, self.save_items_btn, self.save_mats_btn):
+        for widget in (self.load_btn, self.save_items_btn,
+                       self.save_mats_btn, self.update_btn):
             widget.config(state=state)
         self.root.config(cursor="watch" if busy else "")
         if text:
@@ -1451,20 +1596,31 @@ class DarkstoryApp:
         detail = "ใส่ %s  /  ต้องใช้ %s ชิ้นส่วน" % ("{:,}".format(have),
                                                     "{:,}".format(needed))
         if have < needed:
-            detail += "   •   ขาดอีก %s" % "{:,}".format(needed - have)
+            detail += "   •   ขาดอีก %s ชิ้นส่วน" % "{:,}".format(needed - have)
+        elif have > needed:
+            detail += "   •   เหลือ %s ชิ้นส่วน" % "{:,}".format(have - needed)
+        else:
+            detail += "   •   พอดีเป๊ะ"
         self.chance_detail.config(text=detail, foreground="")
 
-    def fill_to_full(self):
-        """เติมหินสายน้ำเงินให้พอดี 100% แล้วล้างสายแดงออก"""
-        needed = self._needed_pieces()
-        if not needed:
-            return
-        parts = gd.split_down(gd.BLUE_LADDER, needed)
-        for tier in range(len(gd.BLUE_LADDER)):
-            self._set_entry(self.stone_entries[(gd.LINE_BLUE, tier)],
-                            str(parts[tier]) if parts[tier] else "")
-            self._set_entry(self.stone_entries[(gd.LINE_RED, tier)], "")
+    def calc_chance(self):
+        """คำนวณจากหินที่กรอกไว้เท่านั้น ไม่ไปเติมอะไรให้เอง"""
         self.upd_chance()
+        needed = self._needed_pieces()
+        if needed is None:
+            self.set_status("เลือกระดับกับเกรดในส่วนบนให้ครบก่อน", warn=True)
+            return
+        have, bad = self._stones_put_in()
+        if bad:
+            self.set_status("มีช่องหินที่กรอกไม่ใช่จำนวนเต็ม", warn=True)
+            return
+        if have >= needed:
+            self.set_status("หินที่มีพอแล้ว เหลืออีก %s ชิ้นส่วน"
+                            % "{:,}".format(have - needed))
+        else:
+            self.set_status("โอกาส %.4f%% — ขาดอีก %s ชิ้นส่วน"
+                            % (gd.success_chance(have, needed),
+                               "{:,}".format(needed - have)))
 
     def clear_stones(self):
         for entry in self.stone_entries.values():
@@ -1581,6 +1737,117 @@ class DarkstoryApp:
                     "ไม่งั้นมูลค่าวัสดุจะออกมาเป็น 0 ซึ่งไม่ใช่ราคาจริง")
             self.set_status("คำนวณ +%d → +%d เรียบร้อย" % (start, end))
 
+    # ---------------- อัปเดตตัวโปรแกรม ----------------
+
+    def check_updates(self, auto=False):
+        """auto=True คือโปรแกรมเช็กเองตอนเปิด จะเงียบถ้าไม่มีอะไรใหม่"""
+        if self.busy:
+            return
+        if not auto:
+            self.set_busy(True, "กำลังตรวจเวอร์ชันใหม่...")
+
+        def done(result):
+            if not auto:
+                self.set_busy(False)
+            info, err = unpack_async(result, None)
+            if err or not info:
+                log.info("ตรวจอัปเดตไม่สำเร็จ: %s", err)
+                if not auto:
+                    messagebox.showwarning("ตรวจอัปเดต", err or "ไม่ได้ข้อมูลรีลีส")
+                    self.set_status("ตรวจอัปเดตไม่สำเร็จ", warn=True)
+                return
+
+            if parse_version(info["version"]) <= parse_version(CURRENT_VERSION):
+                if not auto:
+                    messagebox.showinfo(
+                        "ตรวจอัปเดต",
+                        "ใช้เวอร์ชันล่าสุดอยู่แล้ว (v%s)" % CURRENT_VERSION)
+                    self.set_status("ใช้เวอร์ชันล่าสุดอยู่แล้ว")
+                return
+
+            self.pending_update = info
+            self._offer_update(info, auto)
+
+        self.run_async(fetch_latest_release, done)
+
+    def _offer_update(self, info, auto):
+        version = str(info.get("version") or "").lstrip("vV")
+        self.update_btn.config(text="⬇  อัปเดตเป็น v%s" % version,
+                               style="Gold.TButton",
+                               command=lambda: self.download_update(ask=True))
+        self.set_status("มีเวอร์ชันใหม่ v%s พร้อมให้อัปเดต" % version)
+
+        if not getattr(sys, "frozen", False):
+            # รันจากซอร์สอยู่ ไม่มี .exe ให้สลับ
+            if not auto:
+                messagebox.showinfo(
+                    "มีเวอร์ชันใหม่",
+                    "มี v%s ออกแล้ว\n\nตอนนี้รันจากซอร์สโค้ดอยู่ "
+                    "การอัปเดตอัตโนมัติใช้ได้เฉพาะตอนเปิดจากไฟล์ .exe" % version)
+            return
+
+        if not info.get("url"):
+            if not auto:
+                messagebox.showwarning(
+                    "มีเวอร์ชันใหม่",
+                    "รีลีส v%s ยังไม่มีไฟล์ .exe แนบมาด้วย" % version)
+            return
+
+        # ผู้ใช้สั่งไว้ว่าถ้ามีของใหม่ให้โหลดเองเลย — โหลดเงียบๆ
+        # แล้วค่อยถามตอนจะรีสตาร์ท จะได้ไม่ขัดจังหวะกลางคัน
+        self.download_update(ask=not auto)
+
+    def download_update(self, ask=True):
+        info = self.pending_update
+        if not info or not info.get("url") or self.busy:
+            return
+        version = str(info.get("version") or "").lstrip("vV")
+        size_mb = (info.get("size") or 0) / 1048576.0
+
+        if ask and not messagebox.askyesno(
+                "อัปเดต",
+                "มีเวอร์ชันใหม่ v%s (ตอนนี้ v%s)\n\n"
+                "ดาวน์โหลด %.1f MB แล้วเปลี่ยนเป็นเวอร์ชันใหม่เลยไหม?"
+                % (version, CURRENT_VERSION, size_mb)):
+            return
+
+        dest = os.path.join(APP_DIR, "update_v%s.exe" % version)
+        self.set_busy(True, "กำลังดาวน์โหลด v%s (%.1f MB)..." % (version, size_mb))
+
+        def done(result):
+            self.set_busy(False)
+            err = result if isinstance(result, str) else None
+            if isinstance(result, tuple):
+                err = result[1] if result and result[0] == "__error__" else None
+            if err:
+                log.warning("อัปเดตล้มเหลว: %s", err)
+                messagebox.showerror("อัปเดตไม่สำเร็จ", err)
+                self.set_status("อัปเดตไม่สำเร็จ", warn=True)
+                return
+
+            self.set_status("ดาวน์โหลด v%s เสร็จแล้ว" % version)
+            if not messagebox.askyesno(
+                    "พร้อมอัปเดตแล้ว",
+                    "ดาวน์โหลด v%s เสร็จแล้ว\n\n"
+                    "ปิดโปรแกรมแล้วเปิดเวอร์ชันใหม่เลยไหม?\n"
+                    "(ถ้ายัง จะเปลี่ยนให้เองตอนเปิดครั้งหน้า)" % version):
+                return
+            try:
+                if self.items_dirty:
+                    self._save_local()
+                swap_exe(dest)
+            except OSError as exc:
+                log.exception("สลับไฟล์ .exe ไม่สำเร็จ")
+                messagebox.showerror(
+                    "อัปเดตไม่สำเร็จ",
+                    "เปลี่ยนไฟล์โปรแกรมไม่สำเร็จ:\n%s\n\n"
+                    "ตัวเดิมยังใช้งานได้ตามปกติ" % exc)
+                return
+            self.root.destroy()
+
+        self.run_async(
+            lambda: download_file(info["url"], dest, info.get("size") or 0), done)
+
     # ---------------- เซิร์ฟเวอร์ ----------------
 
     def _confirm_overwrite(self, sheet, row_count):
@@ -1610,7 +1877,7 @@ class DarkstoryApp:
 
         def done(result):
             self.set_busy(False)
-            ok, err = result if isinstance(result, tuple) else (False, str(result))
+            ok, err = unpack_async(result, False)
             if ok:
                 self.set_status(success_text)
                 messagebox.showinfo("สำเร็จ", success_text)
@@ -1803,6 +2070,7 @@ def report_fatal(exc):
 
 def main():
     setup_logging()
+    cleanup_old_exe()
     log.info("เริ่มโปรแกรม v%s (frozen=%s)", CURRENT_VERSION,
              bool(getattr(sys, "frozen", False)))
 
