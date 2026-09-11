@@ -274,6 +274,12 @@ def apply_theme(root, fonts):
     style.configure("Horizontal.TScrollbar", background=p["panel_hi"],
                     troughcolor=p["base"], borderwidth=0, arrowcolor=p["gold"])
 
+    # ปิดล้อเมาส์ของ Combobox ทิ้ง — ค่าเริ่มต้นของ Tk คือหมุนล้อเหนือช่องแล้ว
+    # "ค่าที่เลือกเปลี่ยน" ซึ่งอันตรายมากที่นี่ เพราะทุกช่องผูกกับ
+    # <<ComboboxSelected>> ที่คำนวณใหม่ทั้งหน้า ผู้ใช้ตั้งใจจะเลื่อนหน้าเฉยๆ
+    # แต่กลับได้ตัวเลขของค่าที่ไม่ได้เลือก และหน้าเลื่อนหนีจนไม่ทันเห็น
+    root.unbind_class("TCombobox", "<MouseWheel>")
+
     style.configure("Status.TLabel", background=p["void"], foreground=p["text_dim"],
                     font="ds.small", padding=(10, 4))
 
@@ -646,9 +652,13 @@ class ScrollArea:
 
         self.body.bind("<Configure>", self._on_body_resize)
         self.canvas.bind("<Configure>", self._on_canvas_resize)
-        # ล้อเมาส์ต้องผูกตอนเมาส์อยู่เหนือกรอบนี้เท่านั้น ไม่งั้นแท็บอื่นเลื่อนตาม
-        self.canvas.bind("<Enter>", self._bind_wheel)
-        self.canvas.bind("<Leave>", self._unbind_wheel)
+
+        # ผูกล้อเมาส์ครั้งเดียวตอนสร้าง แล้วคัดกรองเอาใน _on_wheel
+        # ห้ามผูก/ถอนด้วย <Enter>/<Leave> ของ canvas เพราะเนื้อหาคลุม canvas
+        # ไว้หมด เมาส์จึงอยู่เหนือ "ลูก" ตลอด ไม่เคยเข้า-ออก canvas เอง
+        # และต้องใส่ add="+" ไม่งั้น ScrollArea ตัวหลังจะไปทับ binding ตัวก่อน
+        self._accum = 0
+        self.canvas.bind_all("<MouseWheel>", self._on_wheel, add="+")
 
     def _on_scroll(self, first, last):
         # ซ่อนแถบเลื่อนเมื่อเนื้อหาพอดีอยู่แล้ว
@@ -665,17 +675,45 @@ class ScrollArea:
         # ให้เนื้อหากว้างเท่ากรอบเสมอ จะได้ไม่ต้องเลื่อนแนวนอน
         self.canvas.itemconfigure(self._window, width=event.width)
 
-    def _bind_wheel(self, _event=None):
-        self.canvas.bind_all("<MouseWheel>", self._on_wheel)
+    # widget พวกนี้จัดการล้อเมาส์เองอยู่แล้ว ถ้าไปแย่งจะเกิดสองอย่างพร้อมกัน
+    # เช่นหมุนล้อเหนือ Combobox แล้วค่าที่เลือกเปลี่ยนไปโดยผู้ใช้ไม่ได้ตั้งใจ
+    # widget พวกนี้เลื่อนเนื้อหาของตัวเองได้จริง ปล่อยให้จัดการเอง
+    # ไม่รวม TCombobox เพราะ apply_theme ปิดล้อของมันไปแล้ว (ดูเหตุผลที่นั่น)
+    WHEEL_OWNERS = ("Treeview", "Listbox", "Text", "Scrollbar", "TScrollbar")
 
-    def _unbind_wheel(self, _event=None):
-        self.canvas.unbind_all("<MouseWheel>")
+    def _inside(self, widget):
+        """widget ตัวนี้อยู่ในกรอบเลื่อนของเราหรือเปล่า"""
+        node = widget
+        while node is not None:
+            if node is self.canvas:
+                return True
+            node = getattr(node, "master", None)
+        return False
 
     def _on_wheel(self, event):
+        widget = getattr(event, "widget", None)
+        if not isinstance(widget, tk.Misc):
+            return
+        try:
+            if widget.winfo_class() in self.WHEEL_OWNERS:
+                return          # เจ้าของล้อตัวจริง อย่าไปยุ่ง
+        except tk.TclError:
+            return
+        if not self._inside(widget):
+            return              # อยู่คนละแท็บ/คนละกรอบ
+
         first, last = self.canvas.yview()
         if first <= 0.0 and last >= 1.0:
             return              # ไม่มีอะไรให้เลื่อน อย่าไปกินอีเวนต์
-        self.canvas.yview_scroll(-1 * (event.delta // 120), "units")
+
+        # ทัชแพดส่ง delta เป็นเศษของ 120 ได้ (8, 40, 119) ถ้าหารแบบปัดลง
+        # ค่าบวกน้อยๆ จะกลายเป็น 0 (เลื่อนขึ้นไม่ได้เลย) ส่วนค่าลบกลับปัดเป็น -1
+        # จึงต้องสะสมไว้แล้วเลื่อนเมื่อครบหน่วย สองทิศทางถึงจะสมมาตรกัน
+        self._accum += event.delta
+        steps = int(self._accum / 120)
+        if steps:
+            self._accum -= steps * 120
+            self.canvas.yview_scroll(-steps, "units")
 
     def required_height(self):
         self.body.update_idletasks()

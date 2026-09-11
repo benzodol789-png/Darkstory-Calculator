@@ -345,6 +345,10 @@ def swap_exe(new_path):
     แต่ "เปลี่ยนชื่อ" ได้ จึงย้ายตัวเก่าไปเป็น .old ก่อนแล้ววางตัวใหม่ลงชื่อเดิม
     ถ้าวางไม่สำเร็จก็ย้ายตัวเก่ากลับมา จะได้ไม่เหลือเครื่องที่เปิดโปรแกรมไม่ได้
     """
+    if not getattr(sys, "frozen", False):
+        # ด่านสุดท้าย — ถึงตรงนี้ไม่ได้ถ้าโค้ดข้างบนถูกต้อง แต่ถ้าพลาด
+        # ความเสียหายคือ python.exe ของเครื่องหาย จึงกันซ้ำอีกชั้น
+        raise OSError("อัปเดตอัตโนมัติใช้ได้เฉพาะตอนเปิดจากไฟล์ .exe")
     current = os.path.abspath(sys.executable)
     backup = current + ".old"
     if os.path.exists(backup):
@@ -933,7 +937,7 @@ class DarkstoryApp:
         tab = area.body
         tab.columnconfigure(0, weight=1)
 
-        # ---- ส่วนบน: ตั้งค่า (ซ้าย) + สรุปว่าต้องใช้เท่าไหร่ (ขวา) ----
+        # ---- บน: ตั้งค่า (ซ้าย) + เช็กว่าของที่มีได้กี่ % (ขวา) ----
         form_card, form = theme.card(tab, "ตั้งค่าการตีบวก", accent=p["gold"])
         form_card.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         form.columnconfigure(0, weight=5)
@@ -944,9 +948,9 @@ class DarkstoryApp:
         left.columnconfigure(0, weight=3)
         left.columnconfigure(1, weight=2)
 
-        need = ttk.Frame(form, style="Card.TFrame")
-        need.grid(row=0, column=1, sticky="nsew", padx=(14, 0))
-        need.columnconfigure(1, weight=1)
+        have = ttk.Frame(form, style="Card.TFrame")
+        have.grid(row=0, column=1, sticky="nsew", padx=(14, 0))
+        have.columnconfigure(0, weight=1)
 
         levels = [str(i) for i in range(MIN_LEVEL, MAX_LEVEL + 1)]
 
@@ -983,11 +987,37 @@ class DarkstoryApp:
                    command=self.calc_all).grid(row=6, column=0, columnspan=2,
                                                sticky="ew", pady=(3, 0))
 
-        # ช่องสรุปฝั่งขวา — "ต้องใช้เท่าไหร่ ราคาเท่าไหร่"
-        # คนละเรื่องกับการ์ดข้างล่างที่ดูว่า "ของที่มีอยู่" ได้กี่ %
-        # ---- ช่องสรุปฝั่งขวา: "ต้องใช้อะไรบ้าง ราคาเท่าไหร่" ----
-        # บล็อกบนแยกตามกิจกรรม บล็อกล่างคือบิลรวม
-        # คนละเรื่องกับการ์ดข้างล่างที่ดูว่า "ของที่มีอยู่" ได้กี่ %
+        # ขวาบน — กรอกว่ามีชิ้นส่วนอยู่เท่าไหร่ แล้วดูว่าได้กี่ %
+        # นับเป็น "ชิ้นส่วนหินดั้งเดิม" หน่วยเดียว เพราะชั้นอื่นแปลงกลับมาเป็น
+        # ชิ้นส่วนได้หมด และสายแดงก็ให้โอกาสเท่ากันชิ้นต่อชิ้น
+        ttk.Label(have, text="มีชิ้นส่วนอยู่เท่าไหร่",
+                  style="Field.TLabel").grid(row=0, column=0, sticky="w")
+        self.have_entry = ttk.Entry(have, justify="right")
+        self.have_entry.grid(row=1, column=0, sticky="ew", pady=(2, 8))
+        self.have_entry.bind("<KeyRelease>", self.upd_chance)
+
+        self.chance_value = ttk.Label(have, text="0.0000 %",
+                                      style="Chance.TLabel")
+        self.chance_value.grid(row=2, column=0, sticky="w")
+
+        self.chance_bar = ttk.Progressbar(
+            have, orient="horizontal", maximum=100.0,
+            style="Chance.Horizontal.TProgressbar")
+        self.chance_bar.grid(row=3, column=0, sticky="ew", pady=(4, 5))
+
+        self.chance_detail = ttk.Label(have, text="—", style="CardDim.TLabel",
+                                       wraplength=210, justify="left")
+        self.chance_detail.grid(row=4, column=0, sticky="w")
+
+        for combo in (self.st, self.en, self.gr, self.inh, self.tgr):
+            combo.bind("<<ComboboxSelected>>", self._settings_changed, add="+")
+
+        # ---- ล่าง: รายละเอียดทั้งหมด ----
+        need_card, need = theme.card(tab, "รายละเอียด",
+                                     accent=theme.TAB_ACCENTS[1])
+        need_card.grid(row=1, column=0, sticky="ew")
+        need.columnconfigure(1, weight=1)
+
         row = 0
 
         def money_row(label_text, style="Card.TLabel"):
@@ -998,9 +1028,9 @@ class DarkstoryApp:
             value = ttk.Label(need, text="—", style=style)
             value.grid(row=row, column=1, sticky="e")
             why = ttk.Label(need, text="", style="CardDim.TLabel",
-                            wraplength=200, justify="left")
+                            justify="left")
             why.grid(row=row + 1, column=0, columnspan=2, sticky="w",
-                     pady=(0, 3))
+                     pady=(0, 4))
             row += 2
             return value, why
 
@@ -1008,7 +1038,7 @@ class DarkstoryApp:
         self.use_inherit, self.use_inherit_why = money_row("ใช้สืบทอด")
 
         ttk.Separator(need, orient="horizontal").grid(
-            row=row, column=0, columnspan=2, sticky="ew", pady=(2, 5))
+            row=row, column=0, columnspan=2, sticky="ew", pady=(2, 6))
         row += 1
 
         ttk.Label(need, text="สรุปรายการ", style="Field.TLabel").grid(
@@ -1016,11 +1046,9 @@ class DarkstoryApp:
         row += 1
 
         self.need_pieces = ttk.Label(need, text="—", style="Value.TLabel")
-        self.need_pieces.grid(row=row, column=0, columnspan=2, sticky="w")
-        row += 1
+        self.need_pieces.grid(row=row, column=0, sticky="w")
         self.need_melt = ttk.Label(need, text="", style="CardDim.TLabel")
-        self.need_melt.grid(row=row, column=0, columnspan=2, sticky="w",
-                            pady=(0, 5))
+        self.need_melt.grid(row=row, column=1, sticky="e")
         row += 1
 
         self.cost_mat = ttk.Label(need, text="—", style="Card.TLabel")
@@ -1028,12 +1056,12 @@ class DarkstoryApp:
         for text, value in (("มูลค่าวัสดุ", self.cost_mat),
                             ("ค่าสืบทอด", self.cost_inherit)):
             ttk.Label(need, text=text, style="CardDim.TLabel").grid(
-                row=row, column=0, sticky="w")
-            value.grid(row=row, column=1, sticky="e")
+                row=row, column=0, sticky="w", pady=(3, 0))
+            value.grid(row=row, column=1, sticky="e", pady=(3, 0))
             row += 1
 
         ttk.Separator(need, orient="horizontal").grid(
-            row=row, column=0, columnspan=2, sticky="ew", pady=(5, 4))
+            row=row, column=0, columnspan=2, sticky="ew", pady=(6, 5))
         row += 1
 
         ttk.Label(need, text="รวมทั้งหมด", style="Field.TLabel").grid(
@@ -1046,70 +1074,9 @@ class DarkstoryApp:
         row += 1
 
         self.calc_note = ttk.Label(need, text="", style="CardDim.TLabel",
-                                   wraplength=200, justify="left")
+                                   justify="left")
         self.calc_note.grid(row=row, column=0, columnspan=2, sticky="w",
                             pady=(6, 0))
-
-        for combo in (self.st, self.en, self.gr, self.inh, self.tgr):
-            combo.bind("<<ComboboxSelected>>", self._settings_changed, add="+")
-
-        # ---- ส่วนล่าง: หินที่มีอยู่จริง แบ่งซ้ายน้ำเงิน ขวาแดง ----
-        stone_card, stones = theme.card(tab, "หินที่จะใส่",
-                                        accent=theme.TAB_ACCENTS[1])
-        stone_card.grid(row=1, column=0, sticky="ew", pady=(0, 8))
-        stones.columnconfigure(0, weight=1)
-        stones.columnconfigure(1, weight=1)
-
-        self.stone_entries = {}
-        for col, (line, head, head_style) in enumerate((
-                (gd.LINE_BLUE, "สายน้ำเงิน — ขายได้", "Info.Card.TLabel"),
-                (gd.LINE_RED, "สายแดง — ใช้แล้วถูกผนึก", "Danger.Card.TLabel"))):
-            side = ttk.Frame(stones, style="Card.TFrame")
-            side.grid(row=0, column=col, sticky="nsew",
-                      padx=(0, 10) if col == 0 else (10, 0))
-            side.columnconfigure(0, weight=1)
-
-            ttk.Label(side, text=head, style=head_style).grid(
-                row=0, column=0, columnspan=2, sticky="w", pady=(0, 5))
-
-            for tier, spec in enumerate(gd.ladder(line)):
-                label = ttk.Label(side, text=spec["name"], style="Field.TLabel")
-                icon = theme.stone_icon(line, tier)
-                if icon is not None:
-                    label.config(image=icon, compound="left",
-                                 padding=(0, 0, 5, 0))
-                    label.image = icon      # กัน Tk เก็บกวาดรูปทิ้ง
-                label.grid(row=tier + 1, column=0, sticky="w", pady=2)
-
-                entry = ttk.Entry(side, width=7, justify="right")
-                entry.grid(row=tier + 1, column=1, sticky="e", pady=2,
-                           padx=(6, 0))
-                entry.bind("<KeyRelease>", self.upd_chance)
-                self.stone_entries[(line, tier)] = entry
-
-        btns = ttk.Frame(stones, style="Card.TFrame")
-        btns.grid(row=1, column=0, columnspan=2, sticky="e", pady=(10, 0))
-        ttk.Button(btns, text="🧮  คำนวณ", style="Gold.TButton",
-                   command=self.calc_chance).pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Button(btns, text="ล้าง", command=self.clear_stones).pack(side=tk.LEFT)
-
-        # ---- แถบโอกาสสำเร็จ ----
-        chance_card, chance = theme.card(tab, "โอกาสสำเร็จ",
-                                         accent=theme.TAB_ACCENTS[0])
-        chance_card.grid(row=2, column=0, sticky="ew")
-        chance.columnconfigure(0, weight=1)
-
-        self.chance_value = ttk.Label(chance, text="0.0000 %",
-                                      style="Chance.TLabel")
-        self.chance_value.grid(row=0, column=0, sticky="w")
-
-        self.chance_bar = ttk.Progressbar(
-            chance, orient="horizontal", maximum=100.0,
-            style="Chance.Horizontal.TProgressbar")
-        self.chance_bar.grid(row=1, column=0, sticky="ew", pady=(4, 5))
-
-        self.chance_detail = ttk.Label(chance, text="—", style="CardDim.TLabel")
-        self.chance_detail.grid(row=2, column=0, sticky="w")
 
         self.on_mode_change()
         self.upd_chance()
@@ -1340,42 +1307,54 @@ class DarkstoryApp:
 
     # ---------------- แถบโอกาสสำเร็จ ----------------
 
+    def _plan_now(self):
+        """อ่านตัวเลือกส่วนบนแล้วคิดว่าต้องใช้อะไรบ้าง
+
+        ต้องเป็นแหล่งความจริง "เดียว" ของทั้งหน้า ไม่งั้นช่องสรุปข้างบน
+        กับแถบ % ข้างล่างจะโชว์เลข "ต้องใช้" คนละค่าบนจอเดียวกัน
+        โยน ValueError ถ้าเลือกไม่ครบ / CalcError ถ้าทำแบบนั้นไม่ได้
+        """
+        start = int(self.st.get())
+        end = int(self.en.get())
+        grade_index = GRADES.index(self.gr.get())
+        mode = self.inh.get()
+        target_name = self.tgr.get()
+        target_index = (GRADES.index(target_name)
+                        if target_name in GRADES else grade_index)
+
+        if mode == gd.INHERIT_MODE_HIGHER:
+            # สืบข้ามเกรดได้ทีละเกรด ระดับร่วงทุกครั้ง และถ้าร่วงต่ำกว่า +10
+            # ต้องตีขึ้นมาก่อนถึงสืบต่อได้ — คิดให้ครบทั้งสายในทีเดียว
+            plan = gd.upgrade_plan(grade_index, start, target_index, end)
+            pieces, inherit = plan["pieces"], plan["gold"]
+        else:
+            plan = None
+            pieces = gd.upgrade_pieces(start, end, grade_index)
+            inherit = gd.inherit_cost(mode, end, grade_index, target_index)
+
+        return {"start": start, "end": end, "grade": grade_index,
+                "mode": mode, "target": target_index,
+                "pieces": pieces, "inherit": inherit, "plan": plan}
+
     def _needed_pieces(self):
-        """ชิ้นส่วนที่ทำให้เต็ม 100% — None ถ้าตัวเลือกยังไม่ครบ"""
+        """ชิ้นส่วนที่ทำให้เต็ม 100% — None ถ้าคิดไม่ได้"""
         try:
-            return gd.upgrade_pieces(int(self.st.get()), int(self.en.get()),
-                                     GRADES.index(self.gr.get()))
+            return self._plan_now()["pieces"]
         except (ValueError, CalcError):
             return None
 
     def _stones_put_in(self):
-        """รวมหินที่กรอกทั้ง 8 ช่องเป็นจำนวนชิ้นส่วน
-
-        สายแดงกับสายน้ำเงินให้โอกาสเท่ากันชิ้นต่อชิ้น จึงบวกรวมกันได้ตรงๆ
-        คืน (จำนวนชิ้นส่วน, มีช่องที่กรอกผิดหรือไม่)
-        """
-        total = 0
-        bad = False
-        for line in (gd.LINE_BLUE, gd.LINE_RED):
-            rows = gd.ladder(line)
-            counts = []
-            for tier in range(len(rows)):
-                entry = self.stone_entries[(line, tier)]
-                text = entry.get().strip()
-                if not text:
-                    counts.append(0)
-                    entry.config(foreground="")
-                    continue
-                amount = parse_count(text, None)
-                if amount is None:
-                    counts.append(0)
-                    entry.config(foreground=theme.PALETTE["danger"])
-                    bad = True
-                else:
-                    counts.append(amount)
-                    entry.config(foreground="")
-            total += gd.to_pieces(rows, counts)
-        return total, bad
+        """ชิ้นส่วนที่ผู้ใช้บอกว่ามีอยู่ คืน (จำนวน, กรอกผิดหรือไม่)"""
+        text = self.have_entry.get().strip()
+        if not text:
+            self.have_entry.config(foreground="")
+            return 0, False
+        amount = parse_count(text, None)
+        if amount is None:
+            self.have_entry.config(foreground=theme.PALETTE["danger"])
+            return 0, True
+        self.have_entry.config(foreground="")
+        return amount, False
 
     def upd_chance(self, event=None):
         # ถูกเรียกจาก upd_price ได้ตั้งแต่ยังสร้างแท็บตีบวกไม่เสร็จ
@@ -1383,12 +1362,28 @@ class DarkstoryApp:
             return
 
         have, bad = self._stones_put_in()
-        needed = self._needed_pieces()
+        try:
+            needed = self._plan_now()["pieces"]
+            reason = ""
+        except ValueError:
+            needed, reason = None, "เลือกค่าในส่วนบนให้ครบก่อน"
+        except CalcError as exc:
+            needed, reason = None, str(exc)
 
         if needed is None:
             self.chance_value.config(text="—")
             self.chance_bar.config(value=0)
-            self.chance_detail.config(text="", foreground="")
+            self.chance_detail.config(
+                text=reason,
+                foreground=theme.PALETTE["danger"] if reason else "")
+            return
+
+        if needed == 0:
+            # สืบทอดล้วนๆ ไม่ต้องตีบวกเลย ไม่ใช่ "ไม่ได้เลือกอะไร"
+            self.chance_value.config(text="—")
+            self.chance_bar.config(value=0)
+            self.chance_detail.config(
+                text="ไม่ต้องใช้ชิ้นส่วน มีแต่ค่าสืบทอด", foreground="")
             return
 
         pct = gd.success_chance(have, needed)
@@ -1396,12 +1391,12 @@ class DarkstoryApp:
         self.chance_bar.config(value=pct)
 
         if bad:
-            self.chance_detail.config(text="มีช่องที่กรอกไม่ใช่จำนวนเต็ม",
+            self.chance_detail.config(text="กรอกเป็นจำนวนเต็มเท่านั้น",
                                       foreground=theme.PALETTE["danger"])
             return
 
-        detail = "ใส่ %s  /  ต้องใช้ %s ชิ้นส่วน" % ("{:,}".format(have),
-                                                    "{:,}".format(needed))
+        detail = "มี %s / ต้องใช้ %s ชิ้นส่วน" % ("{:,}".format(have),
+                                                  "{:,}".format(needed))
         if have < needed:
             detail += "   •   ขาดอีก %s ชิ้นส่วน" % "{:,}".format(needed - have)
         elif have > needed:
@@ -1409,30 +1404,6 @@ class DarkstoryApp:
         else:
             detail += "   •   พอดีเป๊ะ"
         self.chance_detail.config(text=detail, foreground="")
-
-    def calc_chance(self):
-        """คำนวณจากหินที่กรอกไว้เท่านั้น ไม่ไปเติมอะไรให้เอง"""
-        self.upd_chance()
-        needed = self._needed_pieces()
-        if needed is None:
-            self.set_status("เลือกระดับกับเกรดในส่วนบนให้ครบก่อน", warn=True)
-            return
-        have, bad = self._stones_put_in()
-        if bad:
-            self.set_status("มีช่องหินที่กรอกไม่ใช่จำนวนเต็ม", warn=True)
-            return
-        if have >= needed:
-            self.set_status("หินที่มีพอแล้ว เหลืออีก %s ชิ้นส่วน"
-                            % "{:,}".format(have - needed))
-        else:
-            self.set_status("โอกาส %.4f%% — ขาดอีก %s ชิ้นส่วน"
-                            % (gd.success_chance(have, needed),
-                               "{:,}".format(needed - have)))
-
-    def clear_stones(self):
-        for entry in self.stone_entries.values():
-            entry.delete(0, tk.END)
-        self.upd_chance()
 
     # ---------------- แท็บคำนวณ ----------------
 
@@ -1493,23 +1464,7 @@ class DarkstoryApp:
             return
 
         try:
-            start = int(self.st.get())
-            end = int(self.en.get())
-            grade_index = GRADES.index(self.gr.get())
-            mode = self.inh.get()
-            target_name = self.tgr.get()
-            target_index = (GRADES.index(target_name)
-                            if target_name in GRADES else grade_index)
-
-            if mode == gd.INHERIT_MODE_HIGHER:
-                # สืบข้ามเกรดได้ทีละเกรด ระดับร่วงทุกครั้ง และถ้าร่วงต่ำกว่า +10
-                # ต้องตีขึ้นมาก่อนถึงสืบต่อได้ — คิดให้ครบทั้งสายในทีเดียว
-                plan = gd.upgrade_plan(grade_index, start, target_index, end)
-                pieces, inherit = plan["pieces"], plan["gold"]
-            else:
-                plan = None
-                pieces = gd.upgrade_pieces(start, end, grade_index)
-                inherit = gd.inherit_cost(mode, end, grade_index, target_index)
+            info = self._plan_now()
         except ValueError:
             self._clear_need()
             if not quiet:
@@ -1520,6 +1475,10 @@ class DarkstoryApp:
             if not quiet:
                 messagebox.showwarning("แจ้งเตือน", str(exc))
             return
+
+        start, end = info["start"], info["end"]
+        grade_index, mode = info["grade"], info["mode"]
+        pieces, inherit, plan = info["pieces"], info["inherit"], info["plan"]
 
         # เศษที่หลอมไม่ครบก็เป็นทุน จึงคิดตามสัดส่วน ไม่ปัดขึ้นและไม่ปัดทิ้ง
         stones, leftover = gd.melt(pieces, MATERIAL_BLUE_RATIO)
@@ -1643,6 +1602,14 @@ class DarkstoryApp:
     def download_update(self, ask=True):
         info = self.pending_update
         if not info or not info.get("url") or self.busy:
+            return
+        if not getattr(sys, "frozen", False):
+            # ตอนรันจากซอร์ส sys.executable คือ python.exe ของเครื่อง
+            # ถ้าปล่อยไปต่อ swap_exe จะเอา .exe ของโปรแกรมไปทับตัวแปลภาษาทิ้ง
+            messagebox.showinfo(
+                "อัปเดต",
+                "ตอนนี้รันจากซอร์สโค้ดอยู่ "
+                "การอัปเดตอัตโนมัติใช้ได้เฉพาะตอนเปิดจากไฟล์ .exe")
             return
         version = str(info.get("version") or "").lstrip("vV")
         size_mb = (info.get("size") or 0) / 1048576.0
