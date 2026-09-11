@@ -329,6 +329,9 @@ STONE_COLORS = {
 _icon_cache = {}
 
 
+ICON_WORK_SIZE = 256        # ย่อรูปใหญ่ลงก่อน ไอคอนจริงเล็กกว่านี้มาก
+
+
 def _trim_border(img, tol=18):
     """ตัดขอบที่เป็นสีเดียวกับมุมภาพออก — รูปแคปจากเกมมักมีกรอบเกินมา"""
     w, h = img.size
@@ -395,6 +398,15 @@ def _load_stone_image(line, tier):
         return None
     try:
         img = Image.open(path).convert("RGBA")
+
+        # ย่อก่อนเสมอ ทั้งเร็วขึ้นและทำให้ค่า tolerance ใช้ได้กับทุกความละเอียด
+        if max(img.size) > ICON_WORK_SIZE:
+            ratio = ICON_WORK_SIZE / float(max(img.size))
+            img = img.resize((max(1, int(img.width * ratio)),
+                              max(1, int(img.height * ratio))), Image.LANCZOS)
+
+        # รูปต้องมีพื้นหลังโปร่งใสมาตั้งแต่ต้นทาง ถ้าแคปมาทั้งช่องไอเทม
+        # ไอคอนจะกลายเป็นกล่องสี่เหลี่ยม ซึ่งเห็นผิดได้ทันทีตั้งแต่เปิดโปรแกรม
         img = _trim_border(img)
         if recolor_to is not None:
             img = _recolor(img, recolor_to)
