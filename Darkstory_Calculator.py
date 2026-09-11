@@ -44,7 +44,7 @@ from game_data import (
 GITHUB_REPO = "benzodol789-png/Darkstory-Calculator"
 APP_NAME = "DARKSTORY CODEX"
 APP_AUTHOR = "โซโuoา"
-CURRENT_VERSION = "1.3.2"
+CURRENT_VERSION = "2.0.0"
 DEFAULT_RATE = 0.85
 
 # timeout ต่อการเชื่อมต่อหนึ่งครั้ง (วินาที) — เป็น socket timeout ไม่ใช่เพดานรวม
