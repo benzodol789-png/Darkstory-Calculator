@@ -883,46 +883,95 @@ class DarkstoryApp:
         p = theme.PALETTE
         tab = ttk.Frame(nb, padding=12)
         nb.add(tab, text="📊  ตีบวก")
-        tab.rowconfigure(4, weight=1)
+        tab.rowconfigure(3, weight=1)      # แถวว่างท้ายสุด ดันการ์ดทุกใบขึ้นบน
         tab.columnconfigure(0, weight=1)
 
         form_card, form = theme.card(tab, "ตั้งค่าการตีบวก", accent=p["gold"])
         form_card.grid(row=0, column=0, sticky="ew", pady=(0, 12))
-        for col in (1, 3):
-            form.columnconfigure(col, weight=1)
+        form.columnconfigure(0, weight=5)
+        form.columnconfigure(1, weight=4)
+
+        left = ttk.Frame(form, style="Card.TFrame")
+        left.grid(row=0, column=0, sticky="nsew")
+        left.columnconfigure(0, weight=1)
+        left.columnconfigure(1, weight=1)
+
+        need = ttk.Frame(form, style="Card.TFrame")
+        need.grid(row=0, column=1, sticky="nsew", padx=(16, 0))
+        need.columnconfigure(1, weight=1)
 
         levels = [str(i) for i in range(MIN_LEVEL, MAX_LEVEL + 1)]
 
-        def field(row, col, text, widget):
-            ttk.Label(form, text=text, style="Field.TLabel").grid(
-                row=row, column=col, sticky="w", padx=(0 if col == 0 else 10, 0))
-            widget.grid(row=row + 1, column=col, sticky="ew", pady=(2, 8),
-                        padx=(0 if col == 0 else 10, 0))
+        def field(row, col, text, widget, span=1):
+            ttk.Label(left, text=text, style="Field.TLabel").grid(
+                row=row, column=col, columnspan=span, sticky="w",
+                padx=(0 if col == 0 else 8, 0))
+            widget.grid(row=row + 1, column=col, columnspan=span, sticky="ew",
+                        pady=(2, 8), padx=(0 if col == 0 else 8, 0))
 
-        self.st = ttk.Combobox(form, values=levels, state="readonly", width=6)
+        self.st = ttk.Combobox(left, values=levels, state="readonly", width=5)
         self.st.set("1")
         field(0, 0, "จากระดับ", self.st)
 
-        self.en = ttk.Combobox(form, values=levels, state="readonly", width=6)
+        self.en = ttk.Combobox(left, values=levels, state="readonly", width=5)
         self.en.set("10")
         field(0, 1, "ถึงระดับ", self.en)
 
-        self.gr = ttk.Combobox(form, values=GRADES, state="readonly", width=10)
+        self.gr = ttk.Combobox(left, values=GRADES, state="readonly", width=10)
         self.gr.set(GRADES[0])
         self.gr.bind("<<ComboboxSelected>>", self.on_mode_change)
-        field(2, 0, "เกรดไอเทม", self.gr)
+        field(2, 0, "เกรดไอเทม", self.gr, span=2)
 
-        self.inh = ttk.Combobox(form, values=INHERIT_MODES, state="readonly", width=14)
+        self.inh = ttk.Combobox(left, values=INHERIT_MODES, state="readonly",
+                                width=14)
         self.inh.set(INHERIT_NONE)
         self.inh.bind("<<ComboboxSelected>>", self.on_mode_change)
-        field(2, 1, "การสืบทอด", self.inh)
+        field(4, 0, "การสืบทอด", self.inh, span=2)
 
-        self.tgr = ttk.Combobox(form, values=GRADES, state="readonly", width=10)
+        self.tgr = ttk.Combobox(left, values=GRADES, state="readonly", width=10)
         self.tgr.set(GRADES[0])
-        field(4, 0, "เกรดเป้าหมาย", self.tgr)
+        field(6, 0, "เกรดเป้าหมาย", self.tgr, span=2)
 
-        for combo in (self.st, self.en, self.gr):
-            combo.bind("<<ComboboxSelected>>", self.upd_chance, add="+")
+        ttk.Button(left, text="🧮  คำนวณ", style="Gold.TButton",
+                   command=self.calc_all).grid(row=8, column=0, columnspan=2,
+                                               sticky="ew", pady=(4, 0))
+
+        # ช่องสรุปฝั่งขวา — "ต้องใช้เท่าไหร่ ราคาเท่าไหร่" คนละเรื่องกับที่เรามีข้างล่าง
+        ttk.Label(need, text="ต้องใช้", style="CardDim.TLabel").grid(
+            row=0, column=0, columnspan=2, sticky="w")
+        self.need_pieces = ttk.Label(need, text="—", style="Value.TLabel")
+        self.need_pieces.grid(row=1, column=0, columnspan=2, sticky="w")
+        self.need_melt = ttk.Label(need, text="", style="CardDim.TLabel")
+        self.need_melt.grid(row=2, column=0, columnspan=2, sticky="w",
+                            pady=(0, 10))
+
+        ttk.Separator(need, orient="horizontal").grid(
+            row=3, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+
+        self.cost_mat = ttk.Label(need, text="—", style="Card.TLabel")
+        self.cost_inherit = ttk.Label(need, text="—", style="Card.TLabel")
+        for row, (text, value) in enumerate(((" มูลค่าวัสดุ", self.cost_mat),
+                                             (" ค่าสืบทอด", self.cost_inherit))):
+            ttk.Label(need, text=text, style="CardDim.TLabel").grid(
+                row=4 + row, column=0, sticky="w")
+            value.grid(row=4 + row, column=1, sticky="e")
+
+        ttk.Separator(need, orient="horizontal").grid(
+            row=6, column=0, columnspan=2, sticky="ew", pady=(8, 6))
+        ttk.Label(need, text=" รวมทั้งหมด", style="Field.TLabel").grid(
+            row=7, column=0, sticky="w")
+        self.cost_total = ttk.Label(need, text="—", style="Info.Card.TLabel")
+        self.cost_total.grid(row=7, column=1, sticky="e")
+        self.cost_thb = ttk.Label(need, text="", style="CardDim.TLabel")
+        self.cost_thb.grid(row=8, column=1, sticky="e")
+
+        self.calc_note = ttk.Label(need, text="", style="CardDim.TLabel",
+                                   wraplength=210, justify="left")
+        self.calc_note.grid(row=9, column=0, columnspan=2, sticky="w",
+                            pady=(8, 0))
+
+        for combo in (self.st, self.en, self.gr, self.inh, self.tgr):
+            combo.bind("<<ComboboxSelected>>", self._settings_changed, add="+")
 
         # --- หินที่จะใส่: 4 ชั้น x 2 สี เหมือนช่อง +/- ในหน้าตีบวกของเกม ---
         stone_card, stones = theme.card(tab, "หินที่จะใส่",
@@ -932,7 +981,8 @@ class DarkstoryApp:
 
         ttk.Label(stones, text="น้ำเงิน", style="Info.Card.TLabel").grid(
             row=0, column=1, pady=(0, 4))
-        ttk.Label(stones, text="แดง", style="Danger.Card.TLabel").grid(
+        ttk.Label(stones, text="แดง (ใช้แล้วไอเทมถูกผนึก)",
+                  style="Danger.Card.TLabel").grid(
             row=0, column=2, padx=(8, 0), pady=(0, 4))
 
         short = ("ชิ้นส่วน", "หิน / พลอย", "ขั้นสูง", "สูงสุด")
@@ -944,9 +994,16 @@ class DarkstoryApp:
                       style="Field.TLabel").grid(row=tier + 1, column=0,
                                                  sticky="w", pady=3)
             for col, line in ((1, gd.LINE_BLUE), (2, gd.LINE_RED)):
-                entry = ttk.Entry(stones, width=10, justify="right")
-                entry.grid(row=tier + 1, column=col, sticky="e", pady=3,
-                           padx=(8, 0))
+                cell = ttk.Frame(stones, style="Card.TFrame")
+                cell.grid(row=tier + 1, column=col, sticky="e", pady=3,
+                          padx=(8, 0))
+                icon = theme.stone_icon(line, tier)
+                if icon is not None:
+                    badge = ttk.Label(cell, image=icon, style="Card.TLabel")
+                    badge.image = icon      # กัน Tk เก็บกวาดรูปทิ้ง
+                    badge.pack(side=tk.LEFT, padx=(0, 5))
+                entry = ttk.Entry(cell, width=9, justify="right")
+                entry.pack(side=tk.LEFT)
                 entry.bind("<KeyRelease>", self.upd_chance)
                 self.stone_entries[(line, tier)] = entry
 
@@ -973,28 +1030,9 @@ class DarkstoryApp:
         self.chance_detail = ttk.Label(chance, text="—", style="CardDim.TLabel")
         self.chance_detail.grid(row=2, column=0, sticky="w")
 
-        ttk.Button(tab, text="🧮  คำนวณต้นทุน", style="Gold.TButton",
-                   command=self.calc_all).grid(row=3, column=0, sticky="ew",
-                                               pady=(0, 12))
-
-        result_card, result = theme.card(tab, "ผลการคำนวณ", accent=p["info"])
-        result_card.grid(row=4, column=0, sticky="nsew")
-        result.rowconfigure(0, weight=1)
-        result.columnconfigure(0, weight=1)
-
-        self.txt = tk.Text(result, height=8, wrap="none", font="ds.mono",
-                           state="disabled", relief="flat", padx=10, pady=8,
-                           bg=p["panel"], fg=p["text"],
-                           insertbackground=p["gold"], selectbackground=p["border"],
-                           highlightthickness=1, highlightbackground=p["line"],
-                           highlightcolor=p["line"])
-        self.txt.grid(row=0, column=0, sticky="nsew")
-        bar = ttk.Scrollbar(result, orient=tk.VERTICAL, command=self.txt.yview)
-        bar.grid(row=0, column=1, sticky="ns")
-        self.txt.configure(yscrollcommand=bar.set)
-
         self.on_mode_change()
         self.upd_chance()
+        self.calc_all(quiet=True)
 
     # ---------------- สถานะ / busy ----------------
 
@@ -1043,6 +1081,7 @@ class DarkstoryApp:
         self.upd_tree()
         self.refresh_prices()
         self.calc_split()
+        self.calc_all(quiet=True)
         self.gold_to_thb()
 
     def gold_to_thb(self, event=None):
@@ -1249,6 +1288,7 @@ class DarkstoryApp:
                             money(value / float(worth))),
                     foreground="")
         self.upd_chance()
+        self.calc_all(quiet=True)
 
     def refresh_prices(self):
         """วาดบรรทัดใต้ช่องราคาทุกชั้นใหม่ — เรียกตอนเรตเปลี่ยนหรือโหลดข้อมูลเสร็จ"""
@@ -1284,11 +1324,16 @@ class DarkstoryApp:
         """สลับสาย — เปลี่ยนชื่อชั้นทั้งหมดแล้วคิดใหม่"""
         rows = self._current_ladder()
         scale = gd.tier_scale(rows)
+        line = self.split_line.get()
         for tier, spec in enumerate(rows):
-            self.split_names[tier].config(text=spec["name"])
+            icon = theme.stone_icon(line, tier)
+            for label in (self.split_names[tier], self.split_out[tier][0]):
+                label.config(text=spec["name"])
+                if icon is not None:
+                    label.config(image=icon, compound="left", padding=(0, 0, 6, 0))
+                    label.image = icon      # กัน Tk เก็บกวาดรูปทิ้ง
             self.split_worth[tier].config(
                 text="= %s ชิ้นส่วน" % "{:,}".format(scale[tier]))
-            self.split_out[tier][0].config(text=spec["name"])
         self.calc_split()
 
     def clear_split(self):
@@ -1450,20 +1495,30 @@ class DarkstoryApp:
         else:
             self.tgr.set("")
 
-    def _write_result(self, text):
-        self.txt.config(state="normal")
-        self.txt.delete("1.0", tk.END)
-        self.txt.insert(tk.END, text)
-        self.txt.config(state="disabled")
+    def _settings_changed(self, event=None):
+        """ตั้งค่าเปลี่ยน — อัปเดตทั้งช่องสรุปข้างบนและโอกาสข้างล่างให้ตรงกันเสมอ"""
+        self.upd_chance()
+        self.calc_all(quiet=True)
 
-    def calc_all(self):
-        self._write_result("")          # อย่าให้รายงานเก่าค้างเป็นคำตอบของ input ใหม่
+    def _clear_need(self, note=""):
+        self.need_pieces.config(text="—")
+        self.need_melt.config(text="")
+        self.cost_mat.config(text="—")
+        self.cost_inherit.config(text="—")
+        self.cost_total.config(text="—")
+        self.cost_thb.config(text="")
+        self.calc_note.config(text=note,
+                              foreground=theme.PALETTE["danger"] if note else "")
 
-        if self.mat_blue_price <= 0:
-            messagebox.showwarning(
-                "แจ้งเตือน",
-                "กรุณาใส่ราคาหินดั้งเดิมในแท็บ 💰 ราคา ก่อน\n"
-                "ไม่งั้นมูลค่าวัสดุจะออกมาเป็น 0 ซึ่งไม่ใช่ราคาจริง")
+    def calc_all(self, quiet=False):
+        """ส่วนบนของแท็บ: ตีถึงระดับที่ตั้งไว้ ต้องใช้เท่าไหร่ และเป็นเงินเท่าไหร่
+
+        คนละเรื่องกับส่วนล่าง ซึ่งดูว่า "ของที่มีอยู่ตอนนี้" ได้โอกาสกี่ %
+
+        quiet=True คือโปรแกรมเรียกเองตอนผู้ใช้เปลี่ยนตัวเลือก จะไม่เด้ง popup
+        ต้องกดปุ่มคำนวณเองถึงจะบอกเหตุผลตอนเลือกไม่ครบ
+        """
+        if not hasattr(self, "need_pieces"):
             return
 
         try:
@@ -1478,10 +1533,14 @@ class DarkstoryApp:
             pieces = gd.upgrade_pieces(start, end, grade_index)
             inherit = gd.inherit_cost(mode, end, grade_index, target_index)
         except ValueError:
-            messagebox.showwarning("แจ้งเตือน", "กรุณาเลือกค่าจากรายการให้ครบ")
+            self._clear_need()
+            if not quiet:
+                messagebox.showwarning("แจ้งเตือน", "กรุณาเลือกค่าจากรายการให้ครบ")
             return
         except CalcError as exc:
-            messagebox.showwarning("แจ้งเตือน", str(exc))
+            self._clear_need(str(exc))
+            if not quiet:
+                messagebox.showwarning("แจ้งเตือน", str(exc))
             return
 
         # เศษที่หลอมไม่ครบก็เป็นทุน จึงคิดตามสัดส่วน ไม่ปัดขึ้นและไม่ปัดทิ้ง
@@ -1489,50 +1548,38 @@ class DarkstoryApp:
         material_gold = gd.pieces_value(pieces, self.mat_blue_price,
                                         MATERIAL_BLUE_RATIO)
         total_gold = material_gold + inherit
-        result_level = (gd.HIGHER_RESULT_LEVEL.get(end)
-                        if mode == gd.INHERIT_MODE_HIGHER else end)
 
-        if mode == INHERIT_NONE:
-            grade_line = "เกรด %s (ไม่สืบทอด)" % GRADES[grade_index]
-        else:
-            grade_line = "เกรด %s → %s (%s)" % (
-                GRADES[grade_index], GRADES[target_index], mode)
+        self.need_pieces.config(text="{:,} ชิ้นส่วน".format(pieces))
+        melt_text = "= %s %s" % ("{:,}".format(stones), gd.BLUE_LADDER[1]["unit"])
+        if leftover:
+            melt_text += "  + เศษ %d ชิ้น" % leftover
+        self.need_melt.config(text=melt_text)
 
-        w = 58
-        rule = "─" * w
-        out = [
-            "  ตี +%d  →  +%d" % (start, end),
-            "  %s" % grade_line,
-            rule,
-        ]
-        if mode == gd.INHERIT_MODE_HIGHER and result_level is not None:
-            # สืบทอดข้ามเกรดแล้วระดับตีบวกจะลดลง ต้องบอกให้เห็นก่อนตัดสินใจ
-            out += ["  ⚠ หลังสืบทอดข้ามเกรด อุปกรณ์จะเหลือ +%d (จาก +%d)"
-                    % (result_level, end), rule]
-        out += [
-            "",
-            "  วัสดุที่ต้องใช้",
-            "    %s" % gd.BLUE_PIECE,
-            "        {:>16,} ชิ้น   (ซื้อขายไม่ได้)".format(pieces),
-            "    หลอมรวมเป็น {}".format(gd.BLUE_UNIT),
-            "        {:>16,} ก้อน  + เศษ {} ชิ้น".format(stones, leftover),
-            "",
-            rule,
-            "  มูลค่าหินดั้งเดิม  {:>16} ทอง".format(money(material_gold)),
-            "                    {:>16} บาท".format(
-                money(material_gold * self.rate_gold_thb)),
-            "",
-            "  ค่าสืบทอด         {:>16} ทอง".format(money(inherit)),
-            "                    {:>16} บาท".format(
-                money(inherit * self.rate_gold_thb)),
-            rule,
-            "  รวมทั้งหมด        {:>16} ทอง".format(money(total_gold)),
-            "                    {:>16} บาท".format(
-                money(total_gold * self.rate_gold_thb)),
-            rule,
-        ]
-        self._write_result("\n".join(out))
-        self.set_status("คำนวณ +%d → +%d เรียบร้อย" % (start, end))
+        self.cost_mat.config(text="%s ทอง" % money(material_gold))
+        self.cost_inherit.config(text="%s ทอง" % money(inherit))
+        self.cost_total.config(text="%s ทอง" % money(total_gold))
+        self.cost_thb.config(text="%s บาท"
+                                  % money(total_gold * self.rate_gold_thb))
+
+        notes = []
+        if mode == gd.INHERIT_MODE_HIGHER:
+            result_level = gd.HIGHER_RESULT_LEVEL.get(end)
+            if result_level is not None:
+                # สืบทอดข้ามเกรดแล้วระดับตีบวกจะลดลง ต้องบอกก่อนตัดสินใจ
+                notes.append("⚠ สืบทอดข้ามเกรดแล้วเหลือ +%d (จาก +%d)"
+                             % (result_level, end))
+        if self.mat_blue_price <= 0:
+            notes.append("ยังไม่ได้ใส่ราคาในแท็บ 💰 ราคา มูลค่าวัสดุจึงเป็น 0")
+        self.calc_note.config(text="\n".join(notes),
+                              foreground=theme.PALETTE["danger"] if notes else "")
+
+        if not quiet:
+            if self.mat_blue_price <= 0:
+                messagebox.showwarning(
+                    "แจ้งเตือน",
+                    "กรุณาใส่ราคาหินดั้งเดิมในแท็บ 💰 ราคา ก่อน\n"
+                    "ไม่งั้นมูลค่าวัสดุจะออกมาเป็น 0 ซึ่งไม่ใช่ราคาจริง")
+            self.set_status("คำนวณ +%d → +%d เรียบร้อย" % (start, end))
 
     # ---------------- เซิร์ฟเวอร์ ----------------
 

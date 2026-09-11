@@ -300,6 +300,71 @@ def apply_theme(root, fonts):
 # พื้นหลัง
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# ไอคอนหินตามชั้น
+#
+# ในเกมหินแต่ละชั้นเป็นรูปเดียวกัน ต่างกันแค่สี ตัวโปรแกรมจึงวาดเองได้
+# แต่ถ้าวางไฟล์รูปจริงจากเกมไว้ข้างโปรแกรม จะหยิบไปใช้แทนทันที
+# ตั้งชื่อว่า stone_blue_0.png .. stone_blue_3.png และ stone_red_0.png ..
+# ---------------------------------------------------------------------------
+
+STONE_COLORS = {
+    "blue": ["#3d7fa0", "#4fd6f7", "#8ae9ff", "#dff8ff"],
+    "red":  ["#a03d55", "#ff6b7a", "#ff9ec4", "#ffd9ec"],
+}
+
+_icon_cache = {}
+
+
+def stone_icon(line, tier, size=22):
+    """ไอคอนหินชั้นหนึ่ง คืน PhotoImage หรือ None ถ้าไม่มี PIL
+
+    ต้องเก็บผลลัพธ์ไว้ในตัวแปรที่ไม่ถูกเก็บกวาด ไม่งั้น Tk จะลบรูปทิ้ง
+    ที่นี่ใช้ _icon_cache ถือไว้ให้แล้ว
+    """
+    key = (line, tier, size)
+    if key in _icon_cache:
+        return _icon_cache[key]
+    if not HAVE_PIL:
+        return None
+
+    path = asset("stone_%s_%d.*" % (line, tier))
+    if path:
+        try:
+            img = Image.open(path).convert("RGBA")
+            img = img.resize((size, size), Image.LANCZOS)
+            _icon_cache[key] = ImageTk.PhotoImage(img)
+            return _icon_cache[key]
+        except Exception:
+            pass                      # ไฟล์เสีย -> ตกไปวาดเอง
+
+    ramp = STONE_COLORS.get(line, STONE_COLORS["blue"])
+    color = ramp[min(tier, len(ramp) - 1)]
+
+    scale = 4                          # วาดใหญ่แล้วย่อ ขอบจะได้เนียน
+    box = size * scale
+    img = Image.new("RGBA", (box, box), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    pad = box // 8
+    draw.rounded_rectangle((0, 0, box - 1, box - 1), radius=box // 5,
+                           fill=PALETTE["panel"], outline=color,
+                           width=max(2, scale))
+    # เม็ดพลอยทรงสี่เหลี่ยมขนมเปียกปูนแบบในเกม
+    cx = cy = box / 2.0
+    r = (box - pad * 2) / 2.0
+    draw.polygon([(cx, cy - r), (cx + r, cy), (cx, cy + r), (cx - r, cy)],
+                 fill=color)
+    # แสงสะท้อนมุมบนซ้าย ให้ดูเป็นผิวมันไม่ใช่สีแบน
+    draw.polygon([(cx, cy - r * 0.85), (cx + r * 0.4, cy - r * 0.2),
+                  (cx, cy), (cx - r * 0.4, cy - r * 0.2)],
+                 fill=(255, 255, 255, 110))
+
+    img = img.resize((size, size), Image.LANCZOS)
+    _icon_cache[key] = ImageTk.PhotoImage(img)
+    return _icon_cache[key]
+
+
 def rounded_mask(size, radius):
     mask = Image.new("L", size, 0)
     ImageDraw.Draw(mask).rounded_rectangle(
