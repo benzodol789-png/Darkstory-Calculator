@@ -1,0 +1,650 @@
+# -*- coding: utf-8 -*-
+"""ธีมหน้าตาโปรแกรม Darkstory Calculator
+
+รวมทุกอย่างที่เกี่ยวกับ "หน้าตา" ไว้ที่เดียว เพื่อให้ไฟล์หลักเหลือแต่ตรรกะ:
+  PALETTE        สีที่ดูดมาจากภาพพื้นหลังของเกมจริง
+  Fonts          ฟอนต์ที่ย่อ/ขยายตามขนาดหน้าต่าง
+  apply_theme()  ตั้งสไตล์ ttk ทั้งหมดให้เป็นโทนมืด
+  Backdrop       ผืนผ้าใบที่วาดรูปพื้นหลัง + แผงโค้งมน
+  RoundedWindow  หน้าต่างไร้ขอบมุมโค้ง พร้อม title bar และการย่อ/ขยาย/ลากที่ทำเอง
+
+หมายเหตุ: มุมโค้งของหน้าต่างบน Windows 10 ทำด้วย SetWindowRgn เอง
+เพราะ DWM รองรับมุมโค้ง native เฉพาะ Windows 11 (build 22000 ขึ้นไป)
+"""
+
+import glob
+import os
+import sys
+import tkinter as tk
+from tkinter import font as tkfont
+from tkinter import ttk
+
+try:
+    from PIL import Image, ImageDraw, ImageFilter, ImageTk
+    HAVE_PIL = True
+except ImportError:                                   # pragma: no cover
+    HAVE_PIL = False
+
+
+# ---------------------------------------------------------------------------
+# สี — ดูดจาก DarkstoryBG1.jpg (hue ~23 องศา อบอุ่น มืดทั้งภาพ)
+# ---------------------------------------------------------------------------
+PALETTE = {
+    "void":      "#0b0907",   # นอกสุด (เห็นตอนมุมโค้ง)
+    "base":      "#18120d",   # พื้นแผงหลัก
+    "panel":     "#211a13",   # แผงย่อย
+    "panel_hi":  "#2e2419",   # แถวที่ถูกเลือก / hover
+    "card":      "#2c2319",   # การ์ดเนื้อหา (สว่างกว่าพื้น = ลอยขึ้นมา)
+    "card_lo":   "#080605",   # เงาใต้การ์ด
+    "card_hi":   "#54432d",   # ขอบบนการ์ด (แสงตกกระทบ)
+    "line":      "#4a3423",   # เส้นคั่น
+    "border":    "#6b4a2c",   # ขอบแผง
+    "gold":      "#d9a441",   # ทอง (จากป้ายในภาพ)
+    "gold_hi":   "#f2d18a",
+    "gold_lo":   "#8a6520",
+    "text":      "#f2e6d2",   # ตัวหนังสือหลัก
+    "text_dim":  "#a89179",   # ตัวหนังสือรอง
+    "accent":    "#ff9d4d",   # ส้มพระอาทิตย์ตก
+    "danger":    "#e06c60",
+    "ok":        "#8fbf6a",
+    "info":      "#6fa8d0",   # ฟ้า (ใช้กับฝั่งหินดั้งเดิม)
+    "locked":    "#9c8f7f",   # ของที่ซื้อขายไม่ได้
+    "titlebar":  "#141c26",   # โทนฟ้าจาก BG2 ใช้เป็นแถบหัว
+}
+
+# สีประจำแท็บ — ใช้เป็นแถบเน้นหัวข้อ ให้แต่ละแท็บแยกกันด้วยสายตา
+TAB_ACCENTS = ["#d9a441", "#c98a3e", "#6fa8d0", "#b06fd0"]
+
+CORNER_RADIUS = 18        # มุมโค้งของหน้าต่าง
+PANEL_RADIUS = 14         # มุมโค้งของแผงข้างใน
+MIN_W, MIN_H = 560, 680   # แนวตั้ง — แคบแต่สูง
+EDGE = 6                  # ความหนาของขอบที่ลากย่อ/ขยายได้
+
+
+def asset(pattern):
+    """หาไฟล์รูปทั้งตอนรันจาก .py และตอนอยู่ใน .exe ที่ PyInstaller แตกไว้"""
+    roots = []
+    base = getattr(sys, "_MEIPASS", None)
+    if base:
+        roots.append(base)
+    if getattr(sys, "frozen", False):
+        roots.append(os.path.dirname(sys.executable))
+    roots.append(os.path.dirname(os.path.abspath(__file__)))
+    for root in roots:
+        found = sorted(glob.glob(os.path.join(root, pattern)))
+        if found:
+            return found[0]
+    return None
+
+
+# ---------------------------------------------------------------------------
+# ฟอนต์
+# ---------------------------------------------------------------------------
+
+# ฟอนต์ที่วาดภาษาไทยได้สวยบน Windows เรียงตามความชอบ
+THAI_FAMILIES = ["Leelawadee UI", "Leelawadee", "Tahoma", "Segoe UI"]
+MONO_FAMILIES = ["Consolas", "Courier New"]
+
+# ชื่อฟอนต์ -> (ขนาดฐาน, ตัวหนา, ใช้ฟอนต์ monospace ไหม)
+FONT_SPEC = {
+    "ds.body":    (10, False, False),
+    "ds.small":   (9,  False, False),
+    "ds.bold":    (10, True,  False),
+    "ds.title":   (14, True,  False),
+    "ds.heading": (12, True,  False),   # หัวข้อในการ์ด — หนาและใหญ่กว่าเนื้อชัดเจน
+    "ds.label":   (10, True,  False),   # ป้ายกำกับช่องกรอก
+    "ds.big":     (16, True,  False),   # ตัวเลขผลลัพธ์ที่ต้องเด่น
+    "ds.mono":    (10, False, True),
+}
+
+
+class Fonts:
+    """สร้างฟอนต์ที่มีชื่อ แล้วปรับขนาดทีเดียวพร้อมกันได้ตอนหน้าต่างเปลี่ยนขนาด
+
+    widget ที่อ้างฟอนต์ด้วย "ชื่อ" จะอัปเดตตามเองอัตโนมัติ ไม่ต้องไล่ตั้งทีละตัว
+    """
+
+    def __init__(self, root):
+        available = set(tkfont.families(root))
+        self.family = next((f for f in THAI_FAMILIES if f in available), "Tahoma")
+        self.mono = next((f for f in MONO_FAMILIES if f in available), "Courier New")
+        self.scale = 1.0
+        self.fonts = {}
+        for name, (size, bold, mono) in FONT_SPEC.items():
+            self.fonts[name] = tkfont.Font(
+                root=root, name=name,
+                family=self.mono if mono else self.family,
+                size=size, weight="bold" if bold else "normal")
+
+    def rescale(self, width, height):
+        """คิดตัวคูณจากขนาดหน้าต่าง แล้วปรับทุกฟอนต์ คืน True ถ้ามีการเปลี่ยน
+
+        อิงด้านที่ 'คับ' กว่า เพื่อไม่ให้ตัวหนังสือโตจนล้นตอนหน้าต่างเตี้ยแต่กว้าง
+        """
+        scale = min(width / 1000.0, height / 700.0)
+        scale = max(0.85, min(scale, 1.6))
+        if abs(scale - self.scale) < 0.04:
+            return False
+        self.scale = scale
+        for name, (size, _bold, _mono) in FONT_SPEC.items():
+            self.fonts[name].configure(size=max(8, int(round(size * scale))))
+        return True
+
+    def row_height(self):
+        return int(self.fonts["ds.body"].metrics("linespace") * 1.6)
+
+
+# ---------------------------------------------------------------------------
+# สไตล์ ttk
+# ---------------------------------------------------------------------------
+
+def apply_theme(root, fonts):
+    """ตั้งสไตล์ ttk ทั้งหมดให้เป็นโทนมืดของเกม คืนตัว Style"""
+    style = ttk.Style(root)
+    style.theme_use("clam")          # clam ยอมให้เปลี่ยนสีได้มากที่สุด
+    p = PALETTE
+
+    root.configure(bg=p["void"])
+
+    style.configure(".", background=p["base"], foreground=p["text"],
+                    fieldbackground=p["panel"], font="ds.body",
+                    borderwidth=0, focuscolor=p["gold"])
+
+    style.configure("TFrame", background=p["base"])
+    style.configure("Panel.TFrame", background=p["panel"])
+    style.configure("Title.TFrame", background=p["titlebar"])
+
+    # การ์ด — ใช้ relief raised ของ clam ที่วาดขอบสว่างด้านบนซ้ายและเงาด้านล่างขวา
+    # ทำให้ดูนูนขึ้นมาจากพื้นจริงๆ ไม่ใช่แค่กล่องสี
+    style.configure("Card.TFrame", background=p["card"], relief="raised",
+                    borderwidth=2, lightcolor=p["card_hi"], darkcolor=p["card_lo"],
+                    bordercolor=p["card_lo"])
+    style.configure("Sunken.TFrame", background=p["panel"], relief="sunken",
+                    borderwidth=1, lightcolor=p["card_lo"], darkcolor=p["card_hi"],
+                    bordercolor=p["line"])
+
+    style.configure("TLabel", background=p["base"], foreground=p["text"])
+    style.configure("Card.TLabel", background=p["card"], foreground=p["text"])
+    style.configure("Panel.TLabel", background=p["panel"], foreground=p["text"])
+    style.configure("Dim.TLabel", background=p["base"], foreground=p["text_dim"],
+                    font="ds.small")
+    style.configure("CardDim.TLabel", background=p["card"], foreground=p["text_dim"],
+                    font="ds.small")
+    style.configure("Field.TLabel", background=p["card"], foreground=p["text"],
+                    font="ds.label")
+    style.configure("Heading.TLabel", background=p["card"], foreground=p["gold_hi"],
+                    font="ds.heading")
+    style.configure("Value.TLabel", background=p["card"], foreground=p["gold"],
+                    font="ds.big")
+    style.configure("Locked.TLabel", background=p["card"], foreground=p["locked"],
+                    font="ds.small")
+    style.configure("Title.TLabel", background=p["titlebar"], foreground=p["gold_hi"],
+                    font="ds.title")
+
+    # ป้ายบอกผลลัพธ์ในการ์ด แยกสีตามความหมาย
+    for name, colour in (("Gold", p["gold"]), ("Info", p["info"]),
+                         ("Ok", p["ok"]), ("Danger", p["danger"])):
+        style.configure("%s.Card.TLabel" % name, background=p["card"],
+                        foreground=colour, font="ds.bold")
+
+    # ปุ่มนูน — ขอบบนสว่าง ขอบล่างเงา แล้วสลับตอนกดให้ดูยุบลงไป
+    style.configure("TButton", background=p["panel_hi"], foreground=p["text"],
+                    borderwidth=2, relief="raised", padding=(14, 7), font="ds.bold",
+                    lightcolor=p["card_hi"], darkcolor=p["card_lo"],
+                    bordercolor=p["line"])
+    style.map("TButton",
+              background=[("pressed", p["line"]), ("active", p["border"])],
+              foreground=[("active", p["gold_hi"])],
+              relief=[("pressed", "sunken")],
+              lightcolor=[("pressed", p["card_lo"])],
+              darkcolor=[("pressed", p["card_hi"])])
+
+    style.configure("Gold.TButton", background=p["border"], foreground=p["gold_hi"],
+                    lightcolor=p["gold"], darkcolor=p["gold_lo"])
+    style.map("Gold.TButton",
+              background=[("pressed", p["gold_lo"]), ("active", p["gold"])],
+              foreground=[("active", p["void"])],
+              relief=[("pressed", "sunken")],
+              lightcolor=[("pressed", p["gold_lo"])], darkcolor=[("pressed", p["gold"])])
+
+    style.configure("Chrome.TButton", background=p["titlebar"], foreground=p["text_dim"],
+                    padding=(10, 2), relief="flat", font="ds.bold")
+    style.map("Chrome.TButton",
+              background=[("active", p["line"])], foreground=[("active", p["gold_hi"])])
+    style.configure("Close.TButton", background=p["titlebar"], foreground=p["text_dim"],
+                    padding=(10, 2), relief="flat", font="ds.bold")
+    style.map("Close.TButton",
+              background=[("active", p["danger"])], foreground=[("active", "#ffffff")])
+
+    style.configure("TEntry", fieldbackground=p["panel"], foreground=p["text"],
+                    insertcolor=p["gold"], borderwidth=1, relief="flat",
+                    padding=5, bordercolor=p["line"])
+    style.map("TEntry", bordercolor=[("focus", p["gold"])])
+
+    # Combobox แบบ readonly จะแสดงข้อความเป็น "ที่ถูกเลือก" ตลอดเวลา
+    # ถ้าไม่ตั้ง selectbackground จะได้แถบน้ำเงินสว่างของระบบทับอยู่
+    style.configure("TCombobox", fieldbackground=p["panel"], background=p["panel_hi"],
+                    foreground=p["text"], arrowcolor=p["gold"],
+                    selectbackground=p["panel"], selectforeground=p["text"],
+                    borderwidth=1, bordercolor=p["line"], padding=4,
+                    lightcolor=p["panel"], darkcolor=p["panel"])
+    style.map("TCombobox",
+              fieldbackground=[("readonly", p["panel"]), ("disabled", p["base"])],
+              background=[("readonly", p["panel_hi"]), ("active", p["border"])],
+              foreground=[("readonly", p["text"]), ("disabled", p["text_dim"])],
+              selectbackground=[("readonly", p["panel"])],
+              selectforeground=[("readonly", p["text"])],
+              arrowcolor=[("disabled", p["line"]), ("active", p["gold_hi"])],
+              bordercolor=[("focus", p["gold"])],
+              lightcolor=[("focus", p["gold"])], darkcolor=[("focus", p["gold"])])
+    # รายการที่ dropdown ของ Combobox เป็น widget ของ Tk ไม่ใช่ ttk ต้องตั้งผ่าน option
+    root.option_add("*TCombobox*Listbox.background", p["panel"])
+    root.option_add("*TCombobox*Listbox.foreground", p["text"])
+    root.option_add("*TCombobox*Listbox.selectBackground", p["border"])
+    root.option_add("*TCombobox*Listbox.selectForeground", p["gold_hi"])
+
+    style.configure("Treeview", background=p["panel"], fieldbackground=p["panel"],
+                    foreground=p["text"], borderwidth=0,
+                    rowheight=fonts.row_height())
+    style.map("Treeview",
+              background=[("selected", p["border"])],
+              foreground=[("selected", p["gold_hi"])])
+    style.configure("Treeview.Heading", background=p["panel_hi"], foreground=p["gold"],
+                    font="ds.bold", relief="flat", padding=6)
+    style.map("Treeview.Heading", background=[("active", p["border"])])
+
+    style.configure("TNotebook", background=p["base"], borderwidth=0, tabmargins=(2, 4, 2, 0))
+    style.configure("TNotebook.Tab", background=p["panel"], foreground=p["text_dim"],
+                    padding=(16, 8), font="ds.body", borderwidth=0)
+    style.map("TNotebook.Tab",
+              background=[("selected", p["border"]), ("active", p["panel_hi"])],
+              foreground=[("selected", p["gold_hi"]), ("active", p["text"])],
+              expand=[("selected", (0, 0, 0, 0))])
+
+    style.configure("TSeparator", background=p["line"])
+    style.configure("Vertical.TScrollbar", background=p["panel_hi"],
+                    troughcolor=p["base"], borderwidth=0, arrowcolor=p["gold"])
+    style.map("Vertical.TScrollbar", background=[("active", p["border"])])
+    style.configure("Horizontal.TScrollbar", background=p["panel_hi"],
+                    troughcolor=p["base"], borderwidth=0, arrowcolor=p["gold"])
+
+    style.configure("Status.TLabel", background=p["void"], foreground=p["text_dim"],
+                    font="ds.small", padding=(10, 4))
+    return style
+
+
+# ---------------------------------------------------------------------------
+# พื้นหลัง
+# ---------------------------------------------------------------------------
+
+def rounded_mask(size, radius):
+    mask = Image.new("L", size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle(
+        (0, 0, size[0] - 1, size[1] - 1), radius=radius, fill=255)
+    return mask
+
+
+class Backdrop:
+    """Canvas ที่วาดรูปพื้นหลังเกม (ย่อ/ครอปให้เต็มหน้าต่าง) แล้วคลุมด้วยม่านมืด
+
+    ม่านมืดจำเป็น เพราะภาพต้นฉบับมีตัวละครกลางจอ ถ้าวางตัวหนังสือทับตรงๆ จะอ่านไม่ออก
+    """
+
+    def __init__(self, parent, image_path, dim=0.72, blur=2):
+        self.canvas = tk.Canvas(parent, highlightthickness=0, bd=0,
+                                bg=PALETTE["base"])
+        self.source = None
+        self.dim = dim
+        self.blur = blur
+        self._photo = None
+        self._item = None
+        self._size = (0, 0)
+        if HAVE_PIL and image_path and os.path.exists(image_path):
+            try:
+                self.source = Image.open(image_path).convert("RGB")
+            except OSError:
+                self.source = None
+
+    def render(self, width, height, radius=0):
+        """วาดพื้นหลังใหม่ให้พอดีขนาดที่ให้มา (aspect-fill แล้วครอปกลาง)"""
+        if width < 2 or height < 2:
+            return
+        if (width, height) == self._size:
+            return
+        self._size = (width, height)
+
+        if self.source is None:
+            self.canvas.configure(bg=PALETTE["base"])
+            return
+
+        src = self.source
+        scale = max(width / src.width, height / src.height)
+        new = (max(1, int(src.width * scale)), max(1, int(src.height * scale)))
+        img = src.resize(new, Image.LANCZOS)
+
+        left = (new[0] - width) // 2
+        top = (new[1] - height) // 2
+        img = img.crop((left, top, left + width, top + height))
+
+        if self.blur:
+            img = img.filter(ImageFilter.GaussianBlur(self.blur))
+
+        # ม่านมืด — ทำให้ตัวหนังสือสีครีมอ่านออกทุกจุดของภาพ
+        overlay = Image.new("RGB", img.size, PALETTE["void"])
+        img = Image.blend(img, overlay, self.dim)
+
+        if radius:
+            img.putalpha(rounded_mask(img.size, radius))
+            img = img.convert("RGBA")
+
+        self._photo = ImageTk.PhotoImage(img)
+        if self._item is None:
+            self._item = self.canvas.create_image(0, 0, anchor="nw", image=self._photo)
+        else:
+            self.canvas.itemconfigure(self._item, image=self._photo)
+        self.canvas.tag_lower(self._item)
+
+
+class Banner:
+    """แถบภาพแนวนอนสำหรับหัวโปรแกรม — ครอปเอาเฉพาะช่วงกลางของภาพที่มีตัวละคร
+
+    ไล่เฉดให้จางลงทางขอบล่าง เพื่อให้กลืนกับพื้นหลังส่วนเนื้อหาแทนที่จะตัดเป็นเส้นตรง
+    """
+
+    def __init__(self, image_path, dim=0.45, focus=0.55):
+        self.dim = dim
+        self.focus = focus          # 0 = ครอปบนสุด, 1 = ครอปล่างสุด
+        self.source = None
+        self.photo = None           # ผู้เรียกเอาไปวางบน canvas เอง (โปร่งใสจริง)
+        self._size = (0, 0)
+        if HAVE_PIL and image_path and os.path.exists(image_path):
+            try:
+                self.source = Image.open(image_path).convert("RGB")
+            except OSError:
+                self.source = None
+
+    def render(self, width, height):
+        """คืน True ถ้าวาดใหม่จริง (ผู้เรียกต้องเอา .photo ไปอัปเดตบน canvas)"""
+        if width < 2 or height < 2 or (width, height) == self._size:
+            return False
+        self._size = (width, height)
+        if self.source is None:
+            return False
+
+        src = self.source
+        scale = max(width / src.width, height / src.height)
+        new = (max(1, int(src.width * scale)), max(1, int(src.height * scale)))
+        img = src.resize(new, Image.LANCZOS)
+
+        left = (new[0] - width) // 2
+        top = int((new[1] - height) * self.focus)
+        img = img.crop((left, top, left + width, top + height)).convert("RGB")
+
+        # มืดสม่ำเสมอ + ไล่มืดเพิ่มทางล่าง ให้ต่อกับพื้นหลังเนื้อหาแบบไม่มีรอยต่อ
+        base = Image.new("RGB", img.size, PALETTE["void"])
+        img = Image.blend(img, base, self.dim)
+        fade = Image.new("L", (1, height))
+        for y in range(height):
+            t = y / max(1, height - 1)
+            fade.putpixel((0, y), int(255 * (t ** 2) * 0.9))
+        img = Image.composite(base, img, fade.resize(img.size))
+
+        self.photo = ImageTk.PhotoImage(img)
+        return True
+
+
+def card(parent, title, accent=None, subtitle=None):
+    """สร้างการ์ดนูนพร้อมหัวข้อ คืน frame ที่ไว้ใส่เนื้อหา
+
+    หัวข้อมีแถบสีตั้งอยู่ข้างหน้า ทำให้แยกส่วนได้ด้วยสายตาโดยไม่ต้องมีเส้นคั่น
+    """
+    accent = accent or PALETTE["gold"]
+    outer = ttk.Frame(parent, style="Card.TFrame", padding=(0, 0, 0, 12))
+
+    head = ttk.Frame(outer, style="Card.TFrame")
+    head.pack(fill=tk.X, padx=14, pady=(12, 8))
+    tk.Frame(head, bg=accent, width=4, height=1).pack(side=tk.LEFT, fill=tk.Y,
+                                                      padx=(0, 10))
+    text = ttk.Frame(head, style="Card.TFrame")
+    text.pack(side=tk.LEFT, fill=tk.X, expand=True)
+    lbl = ttk.Label(text, text=title, style="Heading.TLabel")
+    lbl.pack(anchor="w")
+    lbl.configure(foreground=accent)
+    if subtitle:
+        ttk.Label(text, text=subtitle, style="CardDim.TLabel").pack(anchor="w")
+
+    body = ttk.Frame(outer, style="Card.TFrame")
+    body.pack(fill=tk.BOTH, expand=True, padx=14)
+    return outer, body
+
+
+def draw_round_rect(canvas, x1, y1, x2, y2, radius, **kwargs):
+    """วาดสี่เหลี่ยมมุมโค้งบน Canvas ด้วย polygon แบบ smooth"""
+    radius = max(0, min(radius, (x2 - x1) // 2, (y2 - y1) // 2))
+    points = [
+        x1 + radius, y1, x2 - radius, y1, x2, y1, x2, y1 + radius,
+        x2, y2 - radius, x2, y2, x2 - radius, y2, x1 + radius, y2,
+        x1, y2, x1, y2 - radius, x1, y1 + radius, x1, y1,
+    ]
+    return canvas.create_polygon(points, smooth=True, splinesteps=24, **kwargs)
+
+
+# ---------------------------------------------------------------------------
+# หน้าต่างไร้ขอบมุมโค้ง
+# ---------------------------------------------------------------------------
+
+GWL_EXSTYLE = -20
+WS_EX_APPWINDOW = 0x00040000
+WS_EX_TOOLWINDOW = 0x00000080
+SW_MINIMIZE = 6
+SPI_GETWORKAREA = 0x0030
+
+
+class _Rect(object):
+    pass
+
+
+def work_area():
+    """พื้นที่จอที่ไม่โดน taskbar ทับ คืน (x, y, w, h)"""
+    if sys.platform != "win32":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+        rect = wintypes.RECT()
+        ctypes.windll.user32.SystemParametersInfoW(
+            SPI_GETWORKAREA, 0, ctypes.byref(rect), 0)
+        return rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top
+    except Exception:
+        return None
+
+
+class RoundedWindow:
+    """ทำให้หน้าต่าง Tk ไร้ขอบ มุมโค้ง ลากย้ายได้ ย่อ/ขยายได้ ปรับขนาดได้
+
+    บน Windows 10 ไม่มีมุมโค้ง native (มีเฉพาะ Win11) จึงตัดรูปทรงหน้าต่างเอง
+    ด้วย SetWindowRgn + CreateRoundRectRgn แล้ววาด title bar เอง
+    """
+
+    def __init__(self, root, radius=CORNER_RADIUS):
+        self.root = root
+        self.radius = radius
+        self.maximized = False
+        self._normal_geometry = None
+        self._drag = None
+        self._resize = None
+        self._applied = None
+
+        root.overrideredirect(True)
+        root.configure(bg=PALETTE["void"])
+        root.minsize(MIN_W, MIN_H)
+
+        if sys.platform == "win32":
+            root.after(10, self._register_taskbar)
+
+        root.bind("<Configure>", self._on_configure, add="+")
+        root.bind("<Motion>", self._on_motion, add="+")
+        root.bind("<Button-1>", self._on_press, add="+")
+        root.bind("<B1-Motion>", self._on_drag, add="+")
+        root.bind("<ButtonRelease-1>", self._on_release, add="+")
+
+    # ---- Win32 ----
+
+    def _hwnd(self):
+        import ctypes
+        wid = self.root.winfo_id()
+        # Tk ห่อหน้าต่างไว้อีกชั้น ต้องเอาตัวแม่ ถ้าไม่มีค่อยใช้ตัวเอง
+        return ctypes.windll.user32.GetParent(wid) or wid
+
+    def _register_taskbar(self):
+        """overrideredirect ทำให้ปุ่มบน taskbar หายไป ต้องขอคืนเอง"""
+        try:
+            import ctypes
+            hwnd = self._hwnd()
+            user32 = ctypes.windll.user32
+            get_long = getattr(user32, "GetWindowLongPtrW", user32.GetWindowLongW)
+            set_long = getattr(user32, "SetWindowLongPtrW", user32.SetWindowLongW)
+            style = get_long(hwnd, GWL_EXSTYLE)
+            style = (style & ~WS_EX_TOOLWINDOW) | WS_EX_APPWINDOW
+            set_long(hwnd, GWL_EXSTYLE, style)
+            self.root.withdraw()
+            self.root.after(20, self._reshow)
+        except Exception:
+            pass
+
+    def _reshow(self):
+        """deiconify ล้าง window region ที่ตั้งไว้ทิ้ง ต้องตั้งใหม่หลังโชว์เสมอ"""
+        self.root.deiconify()
+        self._applied = None
+        self.root.after_idle(self.refresh_region)
+
+    def refresh_region(self):
+        self._apply_region(self.root.winfo_width(), self.root.winfo_height())
+
+    def _apply_region(self, width, height):
+        """ตัดรูปทรงหน้าต่างให้มุมโค้ง — ต้องทำใหม่ทุกครั้งที่ขนาดเปลี่ยน"""
+        if sys.platform != "win32":
+            return
+        radius = 0 if self.maximized else self.radius
+        if self._applied == (width, height, radius):
+            return
+        self._applied = (width, height, radius)
+        try:
+            import ctypes
+            hwnd = self._hwnd()
+            rgn = ctypes.windll.gdi32.CreateRoundRectRgn(
+                0, 0, width + 1, height + 1, radius * 2, radius * 2)
+            # ระบบเป็นเจ้าของ region หลังเรียก SetWindowRgn ห้าม DeleteObject เอง
+            ctypes.windll.user32.SetWindowRgn(hwnd, rgn, True)
+        except Exception:
+            pass
+
+    # ---- ปุ่มควบคุม ----
+
+    def minimize(self):
+        if sys.platform != "win32":
+            self.root.iconify()
+            return
+        try:
+            import ctypes
+            ctypes.windll.user32.ShowWindow(self._hwnd(), SW_MINIMIZE)
+        except Exception:
+            self.root.iconify()
+
+    def toggle_maximize(self):
+        if self.maximized:
+            if self._normal_geometry:
+                self.root.geometry(self._normal_geometry)
+            self.maximized = False
+        else:
+            self._normal_geometry = self.root.geometry()
+            area = work_area()
+            if area:
+                x, y, w, h = area
+                self.root.geometry("%dx%d+%d+%d" % (w, h, x, y))
+            else:
+                self.root.state("zoomed")
+            self.maximized = True
+        self._applied = None
+        self.root.after_idle(
+            lambda: self._apply_region(self.root.winfo_width(), self.root.winfo_height()))
+
+    # ---- ลากย้าย ----
+
+    def bind_drag(self, widget):
+        """ทำให้ widget นี้ลากย้ายหน้าต่างได้ (ใช้กับแถบหัว)"""
+        widget.bind("<Button-1>", self._start_move, add="+")
+        widget.bind("<B1-Motion>", self._do_move, add="+")
+        widget.bind("<Double-Button-1>", lambda e: self.toggle_maximize(), add="+")
+
+    def _start_move(self, event):
+        self._drag = (event.x_root - self.root.winfo_x(),
+                      event.y_root - self.root.winfo_y())
+
+    def _do_move(self, event):
+        if not self._drag:
+            return
+        if self.maximized:                 # ลากหน้าต่างที่ขยายเต็มจอ -> คืนขนาดเดิมก่อน
+            self.toggle_maximize()
+            self._drag = (self.root.winfo_width() // 2, 20)
+        dx, dy = self._drag
+        self.root.geometry("+%d+%d" % (event.x_root - dx, event.y_root - dy))
+
+    # ---- ปรับขนาดด้วยการลากขอบ ----
+
+    def _edge_at(self, x, y):
+        w, h = self.root.winfo_width(), self.root.winfo_height()
+        left, right = x < EDGE, x > w - EDGE
+        top, bottom = y < EDGE, y > h - EDGE
+        return ("w" if left else "e" if right else "") + \
+               ("n" if top else "s" if bottom else "")
+
+    _CURSORS = {"n": "sb_v_double_arrow", "s": "sb_v_double_arrow",
+                "e": "sb_h_double_arrow", "w": "sb_h_double_arrow",
+                "wn": "size_nw_se", "es": "size_nw_se",
+                "en": "size_ne_sw", "ws": "size_ne_sw"}
+
+    def _on_motion(self, event):
+        if self._resize or self.maximized:
+            return
+        edge = self._edge_at(event.x_root - self.root.winfo_x(),
+                             event.y_root - self.root.winfo_y())
+        self.root.configure(cursor=self._CURSORS.get(edge, ""))
+
+    def _on_press(self, event):
+        if self.maximized:
+            return
+        x = event.x_root - self.root.winfo_x()
+        y = event.y_root - self.root.winfo_y()
+        edge = self._edge_at(x, y)
+        if edge:
+            self._resize = (edge, event.x_root, event.y_root,
+                            self.root.winfo_x(), self.root.winfo_y(),
+                            self.root.winfo_width(), self.root.winfo_height())
+
+    def _on_drag(self, event):
+        if not self._resize:
+            return
+        edge, sx, sy, ox, oy, ow, oh = self._resize
+        dx, dy = event.x_root - sx, event.y_root - sy
+        x, y, w, h = ox, oy, ow, oh
+
+        if "e" in edge:
+            w = max(MIN_W, ow + dx)
+        if "w" in edge:
+            w = max(MIN_W, ow - dx)
+            x = ox + (ow - w)
+        if "s" in edge:
+            h = max(MIN_H, oh + dy)
+        if "n" in edge:
+            h = max(MIN_H, oh - dy)
+            y = oy + (oh - h)
+        self.root.geometry("%dx%d+%d+%d" % (w, h, x, y))
+
+    def _on_release(self, event):
+        self._resize = None
+        self._drag = None
+
+    def _on_configure(self, event):
+        if event.widget is self.root:
+            self._apply_region(event.width, event.height)

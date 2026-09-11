@@ -1,0 +1,14 @@
+# Darkstory Calculator
+#
+# ต้องการ: Python 3.8 ขึ้นไป (ทดสอบบน 3.13) พร้อม tkinter
+#   - ตัวติดตั้ง Python จาก python.org บน Windows มี tkinter มาให้อยู่แล้ว
+#   - บน Linux บางดิสโทรต้องลงเพิ่ม เช่น  sudo apt install python3-tk
+#
+# ติดตั้งด้วย:  py -m pip install -r requirements.txt
+
+# ใช้ย่อ/ครอปภาพพื้นหลังของธีม (Tk อ่าน .jpg เองไม่ได้ และย่อภาพได้แค่หารลงตัว)
+# ถ้าไม่มี Pillow โปรแกรมยังรันได้ แต่จะเป็นพื้นหลังสีเรียบแทนภาพเกม
+Pillow>=10.0
+
+# ใช้ตอน build .exe เท่านั้น ไม่ต้องมีตอนรันปกติ
+# pyinstaller>=6.0
