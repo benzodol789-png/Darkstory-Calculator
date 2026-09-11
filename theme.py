@@ -379,12 +379,17 @@ BLUE_HUE = 132          # ~186 องศา ฟ้าเรืองแสงแ
 
 
 def _load_stone_image(line, tier):
-    """หาไฟล์รูปหิน คืน PIL Image ที่ตัดขอบแล้ว หรือ None ถ้าไม่มี"""
-    path = asset("stone_%s_%d.*" % (line, tier))
+    """หาไฟล์รูปหิน คืน PIL Image ที่ตัดขอบแล้ว หรือ None ถ้าไม่มี
+
+    ชื่อไฟล์นับ 1-4 ตามที่ผู้ใช้เรียกในเกม (1 = ชิ้นส่วน ... 4 = สูงสุด)
+    ส่วน tier ในโค้ดนับ 0-3 จึงต้องบวกหนึ่งตอนประกอบชื่อไฟล์
+    """
+    number = tier + 1
+    path = asset("stone_%s_%d.*" % (line, number))
     recolor_to = None
     if not path and line == "blue":
         # ไม่มีรูปสายน้ำเงินชั้นนี้ -> ยืมของสายแดงมาเปลี่ยนเป็นสีฟ้า
-        path = asset("stone_red_%d.*" % tier)
+        path = asset("stone_red_%d.*" % number)
         recolor_to = BLUE_HUE
     if not path:
         return None
