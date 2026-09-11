@@ -7,6 +7,7 @@
 ใช้เฉพาะ standard library — ไม่ต้องติดตั้งอะไรเพิ่ม
 """
 
+import difflib
 import json
 import logging
 import logging.handlers
@@ -119,6 +120,81 @@ def to_num(value, default=0.0):
 def money(value):
     """จัดรูปจำนวนเงิน — ทศนิยมหลักเดียวพอ ตัวเลขในเกมเป็นหลักล้าน อ่านง่ายกว่า"""
     return "{:,.1f}".format(value)
+
+
+# ---------------------------------------------------------------------------
+# ค้นหาชื่อไอเทมแบบเดาให้
+#
+# คนที่มาค้นมักไม่ใช่คนที่พิมพ์ชื่อเข้าไป จึงเรียกของชิ้นเดียวกันคนละแบบ
+# พิมพ์สั้นบ้าง ตกวรรณยุกต์บ้าง สลับตัวบ้าง — ต้องเดาให้ออกทุกแบบ
+# ---------------------------------------------------------------------------
+
+# วรรณยุกต์ ไม้ไต่คู้ การันต์ นิคหิต — ตกหรือใส่เกินบ่อยที่สุด
+# ตัดทิ้งก่อนเทียบ "ราชันย์" กับ "ราชัน" จะได้นับเป็นคำเดียวกัน
+THAI_MARKS = "".join(chr(code) for code in range(0x0E47, 0x0E4F))
+SEARCH_DROP = THAI_MARKS + " 	 -_.,()[]{}/\'\"+*"
+SEARCH_MIN_SCORE = 45.0     # ต่ำกว่านี้ถือว่าคนละคำกัน
+SEARCH_GUESSES = 5          # ถ้าไม่มีอะไรเข้าเกณฑ์ ยังเดาให้ดูเท่านี้
+
+
+def norm_search(text):
+    """ตัดสิ่งที่คนพิมพ์ไม่ตรงกันบ่อยออก ให้เทียบกันได้แม้พิมพ์ไม่เป๊ะ"""
+    return "".join(ch for ch in str(text).lower() if ch not in SEARCH_DROP)
+
+
+def _is_subsequence(short, long_text):
+    """ตัวอักษรของ short โผล่ครบตามลำดับใน long_text ไหม — รองรับการพิมพ์ย่อ"""
+    stream = iter(long_text)
+    return all(ch in stream for ch in short)
+
+
+def match_score(query, name):
+    """ความใกล้เคียงของชื่อกับคำค้น 0-100 (0 = ไม่เกี่ยวกันเลย)"""
+    q = norm_search(query)
+    name_norm = norm_search(name)
+    if not q:
+        return 100.0
+    if not name_norm:
+        return 0.0
+    if q == name_norm:
+        return 100.0
+    if name_norm.startswith(q):
+        return 96.0
+    if q in name_norm:
+        # คำค้นกินเนื้อชื่อมากเท่าไหร่ ยิ่งน่าจะหมายถึงอันนี้
+        return 85.0 + 10.0 * len(q) / len(name_norm)
+
+    best = difflib.SequenceMatcher(None, q, name_norm).ratio()
+    # เทียบกับทุกช่วงของชื่อที่ยาวเท่าคำค้นด้วย ไม่งั้นชื่อยาวเสียเปรียบ
+    # เช่นค้น "ราชัน" ใน "ถุงมือราชันย์แห่งรัตติกาล" ratio เต็มสายจะต่ำมาก
+    if len(name_norm) > len(q):
+        for i in range(len(name_norm) - len(q) + 1):
+            window = name_norm[i:i + len(q)]
+            best = max(best, difflib.SequenceMatcher(None, q, window).ratio())
+    score = best * 82.0
+
+    if _is_subsequence(q, name_norm):
+        score = max(score, 62.0)
+    return score
+
+
+def search_items(items, query):
+    """คืน [(ตำแหน่งจริงใน items, คะแนน)] เรียงจากใกล้สุดไปไกลสุด
+
+    ต้องคืน "ตำแหน่งจริง" ไม่ใช่ลำดับที่แสดง เพราะพอตารางถูกกรองแล้ว
+    ลำดับแถวจะไม่ตรงกับ items อีก การแก้ราคา/ลบจะไปโดนตัวผิด
+    """
+    if not norm_search(query):
+        return [(i, 100.0) for i in range(len(items))]
+
+    scored = [(i, match_score(query, item["name"])) for i, item in enumerate(items)]
+    scored.sort(key=lambda pair: (-pair[1], items[pair[0]]["name"]))
+
+    hits = [pair for pair in scored if pair[1] >= SEARCH_MIN_SCORE]
+    if hits:
+        return hits
+    # ไม่มีอะไรเข้าเกณฑ์ — ยังเดาให้ดูว่าน่าจะหมายถึงอันไหน ดีกว่าโชว์ตารางเปล่า
+    return [pair for pair in scored[:SEARCH_GUESSES] if pair[1] > 0]
 
 
 # ---------------------------------------------------------------------------
@@ -659,8 +735,19 @@ class DarkstoryApp:
         list_card, listing = theme.card(tab, "ราคาตลาด", accent=p["gold"],
                                         subtitle="ดับเบิลคลิกที่แถวเพื่อแก้ราคา")
         list_card.grid(row=1, column=0, sticky="nsew")
-        listing.rowconfigure(0, weight=1)
+        listing.rowconfigure(1, weight=1)
         listing.columnconfigure(0, weight=1)
+
+        search_row = ttk.Frame(listing, style="Card.TFrame")
+        search_row.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+        search_row.columnconfigure(1, weight=1)
+        ttk.Label(search_row, text="🔍", style="Card.TLabel").grid(row=0, column=0)
+        self.item_search = ttk.Entry(search_row)
+        self.item_search.grid(row=0, column=1, sticky="ew", padx=(6, 0))
+        self.item_search.bind("<KeyRelease>", lambda e: self.upd_tree())
+        self.item_search.bind("<Escape>", lambda e: self.clear_search())
+        ttk.Button(search_row, text="✕", width=3, command=self.clear_search).grid(
+            row=0, column=2, padx=(6, 0))
 
         self.item_tree = ttk.Treeview(listing, columns=("name", "price", "thb"),
                                       show="headings", height=8)
@@ -669,17 +756,17 @@ class DarkstoryApp:
                                          ("thb", "บาท", 120, "e")):
             self.item_tree.heading(col, text=text)
             self.item_tree.column(col, width=width, anchor=anchor, stretch=(col == "name"))
-        self.item_tree.grid(row=0, column=0, sticky="nsew")
+        self.item_tree.grid(row=1, column=0, sticky="nsew")
         self.item_tree.bind("<Delete>", lambda e: self.delete_item())
         self.item_tree.bind("<Double-1>", self._on_tree_double_click)
         self.item_tree.bind("<Return>", lambda e: self.edit_price())
 
         bar = ttk.Scrollbar(listing, orient=tk.VERTICAL, command=self.item_tree.yview)
-        bar.grid(row=0, column=1, sticky="ns")
+        bar.grid(row=1, column=1, sticky="ns")
         self.item_tree.configure(yscrollcommand=bar.set)
 
         bottom = ttk.Frame(listing, style="Card.TFrame")
-        bottom.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        bottom.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(10, 0))
         self.item_count = ttk.Label(bottom, text="0 รายการ", style="CardDim.TLabel")
         self.item_count.pack(side=tk.LEFT)
         self.save_items_btn = ttk.Button(bottom, text="💾  บันทึกไอเทม",
@@ -1012,15 +1099,22 @@ class DarkstoryApp:
         self.item_name.delete(0, tk.END)
         self.item_price.delete(0, tk.END)
         self.item_name.focus_set()
+        self.item_search.delete(0, tk.END)   # ไม่งั้นของที่เพิ่งเพิ่มโดนคำค้นเดิมกรองหาย
         self.upd_tree()
         self.set_status("เพิ่ม '%s' แล้ว (ยังไม่ได้บันทึกขึ้นเซิร์ฟเวอร์)" % name)
 
     def _selected_index(self):
-        """ตำแหน่งของแถวที่เลือกใน self.items คืน None ถ้าไม่ได้เลือกหรือเลือกหลายแถว"""
+        """ตำแหน่งของแถวที่เลือกใน self.items คืน None ถ้าไม่ได้เลือกหรือเลือกหลายแถว
+
+        ต้องอ่านจาก iid ไม่ใช่ .index() เพราะตารางอาจถูกกรองด้วยคำค้นอยู่
+        """
         selected = self.item_tree.selection()
         if len(selected) != 1:
             return None
-        index = self.item_tree.index(selected[0])
+        try:
+            index = int(selected[0])
+        except ValueError:
+            return None
         return index if 0 <= index < len(self.items) else None
 
     def _on_tree_double_click(self, event):
@@ -1051,10 +1145,10 @@ class DarkstoryApp:
         self.upd_tree()
 
         # เลือกแถวเดิมไว้ให้ จะได้แก้ตัวถัดไปหรือกด Enter ซ้ำได้เลย
-        children = self.item_tree.get_children()
-        if index < len(children):
-            self.item_tree.selection_set(children[index])
-            self.item_tree.see(children[index])
+        iid = str(index)
+        if self.item_tree.exists(iid):
+            self.item_tree.selection_set(iid)
+            self.item_tree.see(iid)
 
         self.set_status("แก้ราคา '%s': %s → %s ทอง (ยังไม่ได้บันทึก)"
                         % (item["name"], money(old_price), money(new_price)))
@@ -1064,7 +1158,7 @@ class DarkstoryApp:
         if not selected:
             messagebox.showinfo("แจ้งเตือน", "เลือกแถวที่ต้องการลบก่อน")
             return
-        indexes = sorted((self.item_tree.index(iid) for iid in selected), reverse=True)
+        indexes = sorted((int(iid) for iid in selected if iid.isdigit()), reverse=True)
         for index in indexes:
             if 0 <= index < len(self.items):
                 del self.items[index]
@@ -1072,16 +1166,38 @@ class DarkstoryApp:
         self.upd_tree()
         self.set_status("ลบ %d รายการแล้ว (ยังไม่ได้บันทึก)" % len(indexes))
 
+    def clear_search(self):
+        self.item_search.delete(0, tk.END)
+        self.upd_tree()
+
     def upd_tree(self):
         self.item_tree.delete(*self.item_tree.get_children())
-        for item in self.items:
-            self.item_tree.insert("", tk.END, values=(
+        query = self.item_search.get() if hasattr(self, "item_search") else ""
+        matches = search_items(self.items, query)
+
+        for index, _score in matches:
+            item = self.items[index]
+            # iid = ตำแหน่งจริงใน self.items ไม่ใช่ลำดับแถวที่เห็น
+            # พอกรองด้วยคำค้นแล้วสองอย่างนี้ไม่ตรงกัน ที่อื่นต้องอ่านจาก iid เท่านั้น
+            self.item_tree.insert("", tk.END, iid=str(index), values=(
                 item["name"],
                 money(item["price"]),
                 money(item["price"] * self.rate_gold_thb),
             ))
+
         suffix = " • ยังไม่ได้บันทึก" if self.items_dirty else ""
-        self.item_count.config(text="%d รายการ%s" % (len(self.items), suffix))
+        if not norm_search(query):
+            self.item_count.config(text="%d รายการ%s" % (len(self.items), suffix))
+        elif not matches:
+            self.item_count.config(text="ไม่เจอ '%s'%s" % (query.strip(), suffix))
+        elif matches[0][1] < SEARCH_MIN_SCORE:
+            # ไม่มีชื่อไหนใกล้พอ แต่เดาให้ดูดีกว่าโชว์ตารางเปล่า
+            self.item_count.config(
+                text="ไม่เจอที่ตรง — เดาว่าน่าจะเป็น %d รายการนี้%s"
+                     % (len(matches), suffix))
+        else:
+            self.item_count.config(
+                text="เจอ %d จาก %d รายการ%s" % (len(matches), len(self.items), suffix))
 
     def save_items(self):
         if not self.items:
