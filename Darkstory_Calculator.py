@@ -295,7 +295,7 @@ def fetch_latest_release():
             data = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
-            return None, "ยังไม่มีเวอร์ชันไหนเผยแพร่บน GitHub"
+            return {"version": "", "url": None, "size": 0, "notes": ""}, None
         if exc.code == 403:
             return None, "GitHub จำกัดจำนวนครั้งที่เรียกชั่วคราว ลองใหม่อีกสักครู่"
         return None, "GitHub ตอบกลับ HTTP %s" % exc.code
@@ -1661,10 +1661,8 @@ class DarkstoryApp:
 
             if parse_version(info["version"]) <= parse_version(CURRENT_VERSION):
                 if not auto:
-                    messagebox.showinfo(
-                        "ตรวจอัปเดต",
-                        "ใช้เวอร์ชันล่าสุดอยู่แล้ว (v%s)" % CURRENT_VERSION)
-                    self.set_status("ใช้เวอร์ชันล่าสุดอยู่แล้ว")
+                    messagebox.showinfo("ตรวจอัปเดต", "เป็นเวอร์ชั่นล่าสุดแล้ว")
+                    self.set_status("เป็นเวอร์ชั่นล่าสุดแล้ว")
                 return
 
             self.pending_update = info
