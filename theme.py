@@ -75,6 +75,9 @@ def asset(pattern):
     if getattr(sys, "frozen", False):
         roots.append(os.path.dirname(sys.executable))
     roots.append(os.path.dirname(os.path.abspath(__file__)))
+    # หาในโฟลเดอร์ image/ ด้วย เพราะรูปไอเทมถูกเก็บแยกไว้ที่นั่น
+    for root in list(roots):
+        roots.append(os.path.join(root, "image"))
     for root in roots:
         found = sorted(glob.glob(os.path.join(root, pattern)))
         if found:

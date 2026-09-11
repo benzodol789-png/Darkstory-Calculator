@@ -25,6 +25,11 @@ for name in ("Red.ico", "Blue.ico"):
 for path in glob.glob(os.path.join(os.getcwd(), "Darkstory*BG*.jpg")):
     datas.append((path, "."))
 
+# รูปไอเทมในโฟลเดอร์ image/ — ต้องคงโครงโฟลเดอร์ไว้ เพราะ theme.asset()
+# ไล่หาทั้งในรากและใน image/
+for path in glob.glob(os.path.join(os.getcwd(), "image", "*.png")):
+    datas.append((path, "image"))
+
 a = Analysis(
     ["Darkstory_Calculator.py"],
     pathex=[],
