@@ -182,6 +182,12 @@ def match_score(query, name):
     return score
 
 
+def item_category(item):
+    """หมวดของไอเทม — ของเก่าที่บันทึกไว้ก่อนมีหมวด ถือเป็น "อื่นๆ" """
+    name = str(item.get("category", "") or "").strip()
+    return name if name in gd.ITEM_CATEGORIES else gd.ITEM_CATEGORY_DEFAULT
+
+
 def search_items(items, query):
     """คืน [(ตำแหน่งจริงใน items, คะแนน)] เรียงจากใกล้สุดไปไกลสุด
 
@@ -815,7 +821,8 @@ class DarkstoryApp:
         """ปรับสิ่งที่ไม่ได้อิงฟอนต์ที่มีชื่อโดยอัตโนมัติ"""
         self.style.configure("Treeview", rowheight=self.fonts.row_height())
         scale = self.fonts.scale
-        for col, base in (("name", 220), ("price", 120), ("thb", 120)):
+        for col, base in (("name", 190), ("cat", 90), ("price", 105),
+                          ("thb", 105)):
             self.item_tree.column(col, width=int(base * scale))
 
     def _build_currency_tab(self, nb):
@@ -869,25 +876,32 @@ class DarkstoryApp:
         add_card.grid(row=0, column=0, sticky="ew", pady=(0, 12))
         form.columnconfigure(0, weight=3)
         form.columnconfigure(1, weight=2)
+        form.columnconfigure(2, weight=2)
 
-        ttk.Label(form, text="ชื่อไอเทม", style="Field.TLabel").grid(
-            row=0, column=0, sticky="w")
-        ttk.Label(form, text="ราคา (ทอง)", style="Field.TLabel").grid(
-            row=0, column=1, sticky="w", padx=(8, 0))
+        for col, text in ((0, "ชื่อไอเทม"), (1, "หมวดหมู่"), (2, "ราคา (ทอง)")):
+            ttk.Label(form, text=text, style="Field.TLabel").grid(
+                row=0, column=col, sticky="w", padx=(0 if col == 0 else 8, 0))
+
         self.item_name = ttk.Entry(form)
         self.item_name.grid(row=1, column=0, sticky="ew", pady=(2, 8))
+        self.item_cat = ttk.Combobox(form, values=gd.ITEM_CATEGORIES,
+                                     state="readonly", width=12)
+        self.item_cat.set(gd.ITEM_CATEGORY_DEFAULT)
+        self.item_cat.grid(row=1, column=1, sticky="ew", padx=(8, 0), pady=(2, 8))
         self.item_price = ttk.Entry(form)
-        self.item_price.grid(row=1, column=1, sticky="ew", padx=(8, 0), pady=(2, 8))
+        self.item_price.grid(row=1, column=2, sticky="ew", padx=(8, 0), pady=(2, 8))
         self.item_name.bind("<Return>", lambda e: self.item_price.focus_set())
         self.item_price.bind("<Return>", lambda e: self.add_item())
 
         buttons = ttk.Frame(form, style="Card.TFrame")
-        buttons.grid(row=2, column=0, columnspan=2, sticky="ew")
+        buttons.grid(row=2, column=0, columnspan=3, sticky="ew")
         ttk.Button(buttons, text="➕  เพิ่ม", style="Gold.TButton",
                    command=self.add_item).pack(side=tk.LEFT)
         ttk.Button(buttons, text="✏️  แก้ราคา",
                    command=self.edit_price).pack(side=tk.LEFT, padx=8)
         ttk.Button(buttons, text="🗑  ลบ", command=self.delete_item).pack(side=tk.LEFT)
+        ttk.Button(buttons, text="🔄  อัปเดตราคา",
+                   command=self.refresh_item_price).pack(side=tk.LEFT, padx=8)
 
         list_card, listing = theme.card(tab, "ราคาตลาด", accent=p["gold"],
                                         subtitle="ดับเบิลคลิกที่แถวเพื่อแก้ราคา")
@@ -906,11 +920,20 @@ class DarkstoryApp:
         ttk.Button(search_row, text="✕", width=3, command=self.clear_search).grid(
             row=0, column=2, padx=(6, 0))
 
-        self.item_tree = ttk.Treeview(listing, columns=("name", "price", "thb"),
+        self.item_filter = ttk.Combobox(
+            search_row, state="readonly", width=12,
+            values=[gd.ITEM_CATEGORY_ALL] + gd.ITEM_CATEGORIES)
+        self.item_filter.set(gd.ITEM_CATEGORY_ALL)
+        self.item_filter.bind("<<ComboboxSelected>>", lambda e: self.upd_tree())
+        self.item_filter.grid(row=0, column=3, padx=(8, 0))
+
+        self.item_tree = ttk.Treeview(listing,
+                                      columns=("name", "cat", "price", "thb"),
                                       show="headings", height=8)
-        for col, text, width, anchor in (("name", "ชื่อไอเทม", 220, "w"),
-                                         ("price", "ทอง", 120, "e"),
-                                         ("thb", "บาท", 120, "e")):
+        for col, text, width, anchor in (("name", "ชื่อไอเทม", 190, "w"),
+                                         ("cat", "หมวด", 90, "w"),
+                                         ("price", "ทอง", 105, "e"),
+                                         ("thb", "บาท", 105, "e")):
             self.item_tree.heading(col, text=text)
             self.item_tree.column(col, width=width, anchor=anchor, stretch=(col == "name"))
         self.item_tree.grid(row=1, column=0, sticky="nsew")
@@ -1183,12 +1206,15 @@ class DarkstoryApp:
             self.item_price.focus_set()
             return
 
-        self.items.append({"name": name, "price": price})
+        self.items.append({"name": name, "price": price,
+                           "category": self.item_cat.get()})
         self.items_dirty = True
         self.item_name.delete(0, tk.END)
         self.item_price.delete(0, tk.END)
         self.item_name.focus_set()
-        self.item_search.delete(0, tk.END)   # ไม่งั้นของที่เพิ่งเพิ่มโดนคำค้นเดิมกรองหาย
+        # ไม่งั้นของที่เพิ่งเพิ่มโดนคำค้น/หมวดที่กรองอยู่ซ่อนหายไป
+        self.item_search.delete(0, tk.END)
+        self.item_filter.set(gd.ITEM_CATEGORY_ALL)
         self.upd_tree()
         self.set_status("เพิ่ม '%s' แล้ว (ยังไม่ได้บันทึกขึ้นเซิร์ฟเวอร์)" % name)
 
@@ -1205,6 +1231,63 @@ class DarkstoryApp:
         except ValueError:
             return None
         return index if 0 <= index < len(self.items) else None
+
+    def refresh_item_price(self, index=None):
+        """ดึงราคาจากเซิร์ฟเวอร์เฉพาะไอเทมที่เลือก
+
+        ต่างจากปุ่ม "โหลดข้อมูล" ที่เขียนทับรายการทั้งหมด — อันนี้แตะแถวเดียว
+        ของที่แก้ไว้ยังไม่ได้บันทึกในแถวอื่นจึงไม่หาย
+        """
+        if self.busy:
+            return
+        if index is None:
+            index = self._selected_index()
+        if index is None:
+            messagebox.showinfo("แจ้งเตือน",
+                                "เลือกไอเทมที่ต้องการอัปเดตราคา 1 รายการก่อน")
+            return
+        if not self.api.configured:
+            messagebox.showerror("ผิดพลาด",
+                                 "ยังไม่ได้ตั้งค่าลิงก์เซิร์ฟเวอร์")
+            return
+
+        item = self.items[index]
+        name = item["name"]
+        self.set_busy(True, "กำลังดึงราคา '%s'..." % name)
+
+        def done(result):
+            self.set_busy(False)
+            rows, err = unpack_async(result, None)
+            if err or rows is None:
+                self.set_status("อัปเดตราคาไม่สำเร็จ", warn=True)
+                messagebox.showwarning("อัปเดตราคา", err or "ไม่ได้ข้อมูลจากชีต")
+                return
+
+            target = norm_search(name)
+            for row in rows:
+                if norm_search(row.get("name", "")) != target:
+                    continue
+                price = to_num(row.get("price_gold"), None)
+                if price is None or price < 0:
+                    break
+                old = item["price"]
+                item["price"] = price
+                category = str(row.get("category", "")).strip()
+                if category in gd.ITEM_CATEGORIES:
+                    item["category"] = category
+                self.upd_tree()
+                self.item_tree.selection_set(str(index))
+                self.set_status("อัปเดตราคา '%s': %s → %s ทอง"
+                                % (name, money(old), money(price)))
+                return
+
+            self.set_status("ไม่เจอ '%s' ในชีต" % name, warn=True)
+            messagebox.showinfo(
+                "อัปเดตราคา",
+                "ไม่เจอ '%s' ในชีตบนเซิร์ฟเวอร์\n"
+                "อาจยังไม่ได้บันทึกขึ้นไป หรือชื่อในชีตสะกดต่างกัน" % name)
+
+        self.run_async(lambda: self.api.read("items"), done)
 
     def _on_tree_double_click(self, event):
         # ดับเบิลคลิกบนหัวตาราง/เส้นแบ่งคอลัมน์ ไม่ควรเปิดหน้าต่างแก้ราคา
@@ -1262,21 +1345,37 @@ class DarkstoryApp:
     def upd_tree(self):
         self.item_tree.delete(*self.item_tree.get_children())
         query = self.item_search.get() if hasattr(self, "item_search") else ""
-        matches = search_items(self.items, query)
+        chosen = (self.item_filter.get() if hasattr(self, "item_filter")
+                  else gd.ITEM_CATEGORY_ALL)
+
+        # กรองหมวดก่อน แล้วค่อยค้นเฉพาะในหมวดนั้น
+        # ต้องพกตำแหน่งจริงใน self.items ติดไปด้วย เพราะ search_items
+        # คืนดัชนีของลิสต์ที่ส่งเข้าไป ไม่ใช่ของลิสต์เต็ม
+        pool = [(i, it) for i, it in enumerate(self.items)
+                if chosen == gd.ITEM_CATEGORY_ALL or item_category(it) == chosen]
+        matches = [(pool[j][0], score)
+                   for j, score in search_items([it for _, it in pool], query)]
 
         for index, _score in matches:
             item = self.items[index]
             # iid = ตำแหน่งจริงใน self.items ไม่ใช่ลำดับแถวที่เห็น
-            # พอกรองด้วยคำค้นแล้วสองอย่างนี้ไม่ตรงกัน ที่อื่นต้องอ่านจาก iid เท่านั้น
+            # พอกรองแล้วสองอย่างนี้ไม่ตรงกัน ที่อื่นต้องอ่านจาก iid เท่านั้น
             self.item_tree.insert("", tk.END, iid=str(index), values=(
                 item["name"],
+                item_category(item),
                 money(item["price"]),
                 money(item["price"] * self.rate_gold_thb),
             ))
 
         suffix = " • ยังไม่ได้บันทึก" if self.items_dirty else ""
         if not norm_search(query):
-            self.item_count.config(text="%d รายการ%s" % (len(self.items), suffix))
+            if chosen == gd.ITEM_CATEGORY_ALL:
+                self.item_count.config(text="%d รายการ%s"
+                                            % (len(self.items), suffix))
+            else:
+                self.item_count.config(
+                    text="%s %d จาก %d รายการ%s"
+                         % (chosen, len(matches), len(self.items), suffix))
         elif not matches:
             self.item_count.config(text="ไม่เจอ '%s'%s" % (query.strip(), suffix))
         elif matches[0][1] < SEARCH_MIN_SCORE:
@@ -1297,7 +1396,8 @@ class DarkstoryApp:
             return
         if not self._confirm_overwrite("items", len(self.items)):
             return
-        rows = [["name", "price_gold"]] + [[i["name"], i["price"]] for i in self.items]
+        rows = ([["name", "category", "price_gold"]]
+                + [[i["name"], item_category(i), i["price"]] for i in self.items])
         self._push("items", rows, "บันทึกไอเทมแล้ว", on_success=self._items_saved)
 
     def _items_saved(self):
@@ -1778,7 +1878,8 @@ class DarkstoryApp:
                 if not name or price is None:
                     log.warning("ข้ามแถวไอเทมที่อ่านไม่ได้: %r", row)
                     continue
-                items.append({"name": name, "price": price})
+                items.append({"name": name, "price": price,
+                              "category": str(row.get("category", "")).strip()})
             self.items = items
     # ---------------- เก็บข้อมูลในเครื่อง ----------------
 
@@ -1791,7 +1892,9 @@ class DarkstoryApp:
             if isinstance(row, dict) and row.get("name"):
                 price = to_num(row.get("price"), None)
                 if price is not None:
-                    self.items.append({"name": str(row["name"]), "price": price})
+                    self.items.append({
+                        "name": str(row["name"]), "price": price,
+                        "category": str(row.get("category", "")).strip()})
 
     def _save_local(self):
         write_json(LOCAL_PATH, {
