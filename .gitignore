@@ -9,6 +9,7 @@ darkstory_config.json
 # ของที่ PyInstaller สร้างระหว่าง build
 build/
 dist/
+release/
 
 # ไฟล์ .exe ที่แจกเพื่อน — ใหญ่เกินไป และควรอยู่ใน Releases ไม่ใช่ใน repo
 *.zip
