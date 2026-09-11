@@ -37,7 +37,7 @@ from game_data import (
 GITHUB_REPO = "benzodol789-png/Darkstory-Calculator"
 APP_NAME = "DARKSTORY CODEX"
 APP_AUTHOR = "โซโuoา"
-CURRENT_VERSION = "1.3.0"
+CURRENT_VERSION = "1.3.1"
 DEFAULT_RATE = 0.85
 
 # timeout ต่อการเชื่อมต่อหนึ่งครั้ง (วินาที) — เป็น socket timeout ไม่ใช่เพดานรวม
@@ -1815,7 +1815,7 @@ class DarkstoryApp:
 
         def work():
             return {name: self.api.read(name)
-                    for name in ("currency", "items", "materials")}
+                    for name in ("currency", "items")}
 
         self.run_async(work, self._apply_server_data)
 
@@ -1845,7 +1845,7 @@ class DarkstoryApp:
             self.items_dirty = False
             self.upd_tree()
             self._save_local()
-            self.set_status("โหลดข้อมูลครบทั้ง 3 ชีตแล้ว")
+            self.set_status("โหลดข้อมูลครบแล้ว")
             messagebox.showinfo("สำเร็จ", "โหลดข้อมูลเรียบร้อยแล้ว!")
         elif loaded:
             self._save_local()
