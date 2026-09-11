@@ -23,6 +23,13 @@ from tkinter import messagebox, ttk
 
 import game_data as gd
 import theme
+
+try:
+    # ค่าที่ฝังมากับตัวโปรแกรม ไม่ขึ้น repo — ถ้าไม่มีก็ยังรันได้ปกติ
+    from darkstory_defaults import DEFAULT_SERVER_URL, DEFAULT_TOKEN
+except ImportError:                                   # pragma: no cover
+    DEFAULT_SERVER_URL = ""
+    DEFAULT_TOKEN = ""
 from game_data import (
     GRADES,
     INHERIT_MODES,
@@ -37,7 +44,7 @@ from game_data import (
 GITHUB_REPO = "benzodol789-png/Darkstory-Calculator"
 APP_NAME = "DARKSTORY CODEX"
 APP_AUTHOR = "โซโuoา"
-CURRENT_VERSION = "1.3.1"
+CURRENT_VERSION = "1.3.2"
 DEFAULT_RATE = 0.85
 
 # timeout ต่อการเชื่อมต่อหนึ่งครั้ง (วินาที) — เป็น socket timeout ไม่ใช่เพดานรวม
@@ -392,11 +399,22 @@ def unpack_async(result, fail_value):
 
 
 def load_config():
+    """อ่านค่าตั้งค่า — ไฟล์ข้าง .exe ชนะ ถ้าไม่มีก็ใช้ค่าที่ฝังมากับโปรแกรม
+
+    ที่ต้องมีค่าฝังไว้ เพราะเดิมต้องแก้ JSON เอง ซึ่งพิมพ์ตกลูกน้ำทีเดียว
+    ไฟล์ก็อ่านไม่ออกทั้งไฟล์ แล้วโปรแกรมขึ้นว่า "ยังไม่ได้ตั้งค่าลิงก์"
+    ซึ่งไม่ได้บอกสาเหตุจริงเลย
+    """
     cfg = read_json(CONFIG_PATH, {})
-    return {
-        "server_url": normalize_url(cfg.get("server_url", "")),
-        "token": str(cfg.get("token", "") or ""),
-    }
+    url = normalize_url(cfg.get("server_url", ""))
+    token = str(cfg.get("token", "") or "")
+    if not url:
+        url = normalize_url(DEFAULT_SERVER_URL)
+        if url:
+            log.info("ใช้ลิงก์เซิร์ฟเวอร์ที่ฝังมากับโปรแกรม")
+        if not token:
+            token = DEFAULT_TOKEN
+    return {"server_url": url, "token": token}
 
 
 # ---------------------------------------------------------------------------
