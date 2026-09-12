@@ -44,7 +44,7 @@ from game_data import (
 GITHUB_REPO = "benzodol789-png/Darkstory-Calculator"
 APP_NAME = "DARKSTORY CODEX"
 APP_AUTHOR = "โซโuoา"
-CURRENT_VERSION = "2.0.1"
+CURRENT_VERSION = "2.0.2"
 DEFAULT_RATE = 0.85
 
 # timeout ต่อการเชื่อมต่อหนึ่งครั้ง (วินาที) — เป็น socket timeout ไม่ใช่เพดานรวม
@@ -890,6 +890,142 @@ class DarkstoryApp:
         self.thb_entry = ttk.Entry(conv, font="ds.bold")
         self.thb_entry.grid(row=3, column=0, sticky="ew", pady=(2, 0))
         self.thb_entry.bind("<KeyRelease>", self.thb_to_gold)
+
+        # --- เครื่องคิดเลข: เติมที่ว่างด้านล่างของแท็บนี้ ---
+        calc_card, calc = theme.card(tab, "เครื่องคิดเลข",
+                                     accent=theme.TAB_ACCENTS[1])
+        calc_card.pack(fill=tk.X, pady=(12, 0))
+        for col in range(4):
+            calc.columnconfigure(col, weight=1, uniform="calckey")
+
+        self.calc_text = tk.StringVar(value="0")
+        self._calc_acc = None       # ตัวตั้งที่รอเครื่องหมายอยู่
+        self._calc_op = None        # เครื่องหมายที่ค้างอยู่
+        self._calc_fresh = True     # กดเลขครั้งถัดไปให้เริ่มจำนวนใหม่
+
+        display = ttk.Entry(calc, textvariable=self.calc_text, justify="right",
+                            font="ds.big", state="readonly")
+        display.grid(row=0, column=0, columnspan=4, sticky="ew")
+
+        # ตัวเลขในเกมเป็นหลักล้าน ถ้าไม่มีคอมมาคั่นอ่านยากมาก
+        # แต่จะใส่คอมมาในช่องหลักไม่ได้ เพราะกำลังพิมพ์อยู่
+        self.calc_hint = ttk.Label(calc, text="", style="CardDim.TLabel",
+                                   anchor="e")
+        self.calc_hint.grid(row=1, column=0, columnspan=4, sticky="ew",
+                            pady=(2, 8))
+
+        for r, keys in enumerate((("C", "←", "%", "÷"),
+                                  ("7", "8", "9", "×"),
+                                  ("4", "5", "6", "−"),
+                                  ("1", "2", "3", "+"),
+                                  ("±", "0", ".", "=")), start=2):
+            for c, key in enumerate(keys):
+                ttk.Button(calc, text=key, width=3,
+                           style="Gold.TButton" if key == "=" else "TButton",
+                           command=lambda k=key: self.calc_key(k)).grid(
+                    row=r, column=c, sticky="nsew", padx=2, pady=2)
+
+    # ---------------- เครื่องคิดเลข ----------------
+
+    def _calc_value(self):
+        return parse_num(self.calc_text.get(), 0.0) or 0.0
+
+    @staticmethod
+    def _calc_fmt(value):
+        """ตัดศูนย์ท้ายที่ไม่มีความหมายออก แต่ยังเก็บทศนิยมจริงไว้"""
+        if value != value or value in (float("inf"), float("-inf")):
+            return "คำนวณไม่ได้"
+        return "%.12g" % value
+
+    @staticmethod
+    def _calc_apply(left, op, right):
+        if op == "+":
+            return left + right
+        if op == "−":
+            return left - right
+        if op == "×":
+            return left * right
+        if right == 0:
+            raise ZeroDivisionError
+        return left / right
+
+    def _calc_show(self, text):
+        """เขียนลงช่องหลัก แล้ววาดบรรทัดใต้ช่องที่ใส่คอมมาให้อ่านง่าย
+
+        ใส่คอมมาในช่องหลักไม่ได้ เพราะผู้ใช้กำลังพิมพ์ตัวเลขอยู่
+        แต่ตัวเลขในเกมเป็นหลักล้าน ถ้าไม่มีคอมมาเลยก็นับหลักกันตาลาย
+        """
+        self.calc_text.set(text)
+        value = parse_num(text, None)
+        if value is None or abs(value) < 1000:
+            self.calc_hint.config(text="")
+            return
+        pretty = "{:,.4f}".format(value).rstrip("0").rstrip(".")
+        self.calc_hint.config(text=pretty)
+
+    def calc_key(self, key):
+        text = self.calc_text.get()
+
+        if key == "C":
+            self._calc_acc = self._calc_op = None
+            self._calc_fresh = True
+            self._calc_show("0")
+            return
+
+        if key == "←":
+            if self._calc_fresh:
+                return
+            text = text[:-1]
+            self._calc_fresh = text in ("", "-")
+            self._calc_show("0" if self._calc_fresh else text)
+            return
+
+        if key == "±":
+            if text.startswith("-"):
+                self._calc_show(text[1:])
+            elif parse_num(text, 0.0):
+                self._calc_show("-" + text)
+            return
+
+        if key.isdigit():
+            self._calc_show(key if (self._calc_fresh or text == "0")
+                            else text + key)
+            self._calc_fresh = False
+            return
+
+        if key == ".":
+            if self._calc_fresh:
+                self._calc_show("0.")
+                self._calc_fresh = False
+            elif "." not in text:
+                self._calc_show(text + ".")
+            return
+
+        if key == "%":
+            # แบบเครื่องคิดเลขทั่วไป: 200 + 10% คือบวกด้วย 10% ของ 200
+            value = self._calc_value()
+            if self._calc_op in ("+", "−") and self._calc_acc is not None:
+                value = self._calc_acc * value / 100.0
+            else:
+                value = value / 100.0
+            self._calc_show(self._calc_fmt(value))
+            self._calc_fresh = False
+            return
+
+        # เครื่องหมายคำนวณกับเท่ากับ
+        value = self._calc_value()
+        if self._calc_op is not None and self._calc_acc is not None:
+            try:
+                value = self._calc_apply(self._calc_acc, self._calc_op, value)
+            except ZeroDivisionError:
+                self._calc_acc = self._calc_op = None
+                self._calc_fresh = True
+                self._calc_show("หารด้วยศูนย์ไม่ได้")
+                return
+        self._calc_show(self._calc_fmt(value))
+        self._calc_acc = value
+        self._calc_op = None if key == "=" else key
+        self._calc_fresh = True
 
     def _build_items_tab(self, nb):
         p = theme.PALETTE
