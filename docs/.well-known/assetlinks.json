@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "io.github.benzodol789.darkstorycodex",
+      "sha256_cert_fingerprints": [
+        "94:C7:95:65:CE:2B:D8:96:76:91:6A:4C:FC:F6:C5:11:FF:AD:3E:D0:DE:AB:49:4C:3C:A3:DB:5D:B7:46:0A:13"
+      ]
+    }
+  }
+]
