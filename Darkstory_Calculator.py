@@ -44,7 +44,7 @@ from game_data import (
 GITHUB_REPO = "benzodol789-png/Darkstory-Calculator"
 APP_NAME = "DARKSTORY CODEX"
 APP_AUTHOR = "โซโuoา"
-CURRENT_VERSION = "2.0.0"
+CURRENT_VERSION = "2.0.1"
 DEFAULT_RATE = 0.85
 
 # timeout ต่อการเชื่อมต่อหนึ่งครั้ง (วินาที) — เป็น socket timeout ไม่ใช่เพดานรวม
@@ -526,9 +526,10 @@ class Api:
 # ---------------------------------------------------------------------------
 
 class PriceDialog:
-    """หน้าต่างเล็กสำหรับแก้ราคาไอเทมที่เลือก
+    """หน้าต่างเล็กสำหรับแก้ราคาและหมวดของไอเทมที่เลือก
 
-    ใช้แล้วอ่านผลจาก .result — เป็นราคาใหม่ (float) หรือ None ถ้ายกเลิก
+    ใช้แล้วอ่านผลจาก .result — เป็น dict {"price", "category"}
+    หรือ None ถ้ายกเลิก
     """
 
     def __init__(self, parent, item, rate):
@@ -536,7 +537,7 @@ class PriceDialog:
         self.rate = rate
 
         self.win = win = tk.Toplevel(parent)
-        win.title("แก้ราคา")
+        win.title("แก้ไอเทม")
         win.resizable(False, False)
         win.transient(parent)
 
@@ -556,11 +557,18 @@ class PriceDialog:
         self.entry.grid(row=2, column=1, sticky="w")
         self.entry.bind("<KeyRelease>", self._preview)
 
+        ttk.Label(body, text="หมวดหมู่:").grid(row=3, column=0, sticky="e",
+                                                padx=(0, 8), pady=(8, 0))
+        self.category = ttk.Combobox(body, values=gd.ITEM_CATEGORIES,
+                                     state="readonly", width=16)
+        self.category.set(item_category(item))
+        self.category.grid(row=3, column=1, sticky="w", pady=(8, 0))
+
         self.preview = ttk.Label(body, text="")
-        self.preview.grid(row=3, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        self.preview.grid(row=4, column=0, columnspan=2, sticky="w", pady=(10, 0))
 
         buttons = ttk.Frame(body)
-        buttons.grid(row=4, column=0, columnspan=2, pady=(16, 0), sticky="e")
+        buttons.grid(row=5, column=0, columnspan=2, pady=(16, 0), sticky="e")
         ttk.Button(buttons, text="บันทึก", command=self._ok).pack(side=tk.LEFT, padx=4)
         ttk.Button(buttons, text="ยกเลิก", command=self._cancel).pack(side=tk.LEFT)
 
@@ -599,7 +607,7 @@ class PriceDialog:
             self._preview()
             self.entry.focus_set()
             return
-        self.result = value
+        self.result = {"price": value, "category": self.category.get()}
         self.win.destroy()
 
     def _cancel(self):
@@ -915,7 +923,7 @@ class DarkstoryApp:
         buttons.grid(row=2, column=0, columnspan=3, sticky="ew")
         ttk.Button(buttons, text="➕  เพิ่ม", style="Gold.TButton",
                    command=self.add_item).pack(side=tk.LEFT)
-        ttk.Button(buttons, text="✏️  แก้ราคา",
+        ttk.Button(buttons, text="✏️  แก้ไข",
                    command=self.edit_price).pack(side=tk.LEFT, padx=8)
         ttk.Button(buttons, text="🗑  ลบ", command=self.delete_item).pack(side=tk.LEFT)
         ttk.Button(buttons, text="🔄  อัปเดตราคา",
@@ -1320,17 +1328,22 @@ class DarkstoryApp:
         index = self._selected_index()
         if index is None:
             messagebox.showinfo("แจ้งเตือน",
-                                "เลือกไอเทมที่ต้องการแก้ราคา 1 รายการก่อน\n"
+                                "เลือกไอเทมที่ต้องการแก้ไข 1 รายการก่อน\n"
                                 "(ดับเบิลคลิกที่แถวก็ได้)")
             return
 
         item = self.items[index]
-        new_price = PriceDialog(self.root, item, self.rate_gold_thb).result
-        if new_price is None or new_price == item["price"]:
+        edited = PriceDialog(self.root, item, self.rate_gold_thb).result
+        if edited is None:
             return
 
         old_price = item["price"]
-        item["price"] = new_price
+        old_category = item_category(item)
+        if edited["price"] == old_price and edited["category"] == old_category:
+            return
+
+        item["price"] = edited["price"]
+        item["category"] = edited["category"]
         self.items_dirty = True
         self.upd_tree()
 
@@ -1340,8 +1353,15 @@ class DarkstoryApp:
             self.item_tree.selection_set(iid)
             self.item_tree.see(iid)
 
-        self.set_status("แก้ราคา '%s': %s → %s ทอง (ยังไม่ได้บันทึก)"
-                        % (item["name"], money(old_price), money(new_price)))
+        # บอกเฉพาะสิ่งที่เปลี่ยนจริง แก้หมวดอย่างเดียวจะได้ไม่ขึ้นว่าแก้ราคา
+        changed = []
+        if item["price"] != old_price:
+            changed.append("ราคา %s → %s ทอง"
+                           % (money(old_price), money(item["price"])))
+        if item_category(item) != old_category:
+            changed.append("หมวด %s → %s" % (old_category, item_category(item)))
+        self.set_status("แก้ '%s': %s (ยังไม่ได้บันทึก)"
+                        % (item["name"], "  •  ".join(changed)))
 
     def delete_item(self):
         selected = self.item_tree.selection()
