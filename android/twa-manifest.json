@@ -1,0 +1,43 @@
+{
+  "packageId": "io.github.benzodol789.darkstorycodex",
+  "host": "benzodol789-png.github.io",
+  "name": "DARKSTORY CODEX",
+  "launcherName": "Codex",
+  "display": "standalone",
+  "themeColor": "#0b1421",
+  "themeColorDark": "#0b1421",
+  "navigationColor": "#0b1421",
+  "navigationColorDark": "#0b1421",
+  "navigationDividerColor": "#0b1421",
+  "navigationDividerColorDark": "#0b1421",
+  "backgroundColor": "#0b1421",
+  "enableNotifications": false,
+  "startUrl": "/Darkstory-Calculator/",
+  "iconUrl": "https://benzodol789-png.github.io/Darkstory-Calculator/icons/icon-512.png",
+  "maskableIconUrl": "https://benzodol789-png.github.io/Darkstory-Calculator/icons/icon-maskable.png",
+  "appVersionName": "1.0.0",
+  "appVersion": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://benzodol789-png.github.io/Darkstory-Calculator/manifest.json",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://benzodol789-png.github.io/Darkstory-Calculator/",
+  "minSdkVersion": 21,
+  "orientation": "portrait",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "signingKey": {
+    "path": "./android.keystore",
+    "alias": "android"
+  },
+  "splashScreenFadeOutDuration": 300
+}

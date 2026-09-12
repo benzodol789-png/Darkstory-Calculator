@@ -34,3 +34,18 @@ desktop.ini
 .DS_Store
 .vscode/
 .idea/
+
+# โปรเจกต์ Android — สร้างใหม่ได้จาก android/twa-manifest.json
+# ยกเว้นกุญแจเซ็นแอป ซึ่งห้ามหายและห้ามหลุด (ดู README)
+android/android.keystore
+android/app/
+android/build/
+android/gradle/
+android/gradlew*
+android/.gradle/
+android/build.gradle
+android/settings.gradle
+android/gradle.properties
+android/store_icon.png
+android/manifest-checksum.txt
+*.apk
