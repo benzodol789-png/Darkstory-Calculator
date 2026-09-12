@@ -1,0 +1,231 @@
+/* ธีมโทนน้ำเงิน-ฟ้าตาม UI ในเกม ใช้ค่าสีชุดเดียวกับโปรแกรมบนคอม */
+:root {
+  --void: #05090f;
+  --base: #0b1421;
+  --panel: #122032;
+  --panel-hi: #1c3048;
+  --card: #16243a;
+  --line: #27405c;
+  --border: #35618c;
+  --cyan: #4fd6f7;
+  --cyan-hi: #b8f0ff;
+  --cyan-lo: #1d7fa3;
+  --text: #e4eefa;
+  --dim: #8aa2bd;
+  --violet: #a87bff;
+  --danger: #ff6b7a;
+  --ok: #4ade80;
+  --gold: #ffc861;
+  --tap: 46px;            /* เป้ากดขั้นต่ำสำหรับนิ้ว */
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+body {
+  margin: 0;
+  background: var(--base);
+  color: var(--text);
+  font: 15px/1.5 "Leelawadee UI", "Noto Sans Thai", "Segoe UI", system-ui, sans-serif;
+  padding-bottom: calc(64px + env(safe-area-inset-bottom));
+}
+
+/* ── แถบหัว ── */
+.appbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 8px;
+  padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
+  background: #0d1826;
+  border-bottom: 1px solid var(--line);
+}
+.appbar h1 {
+  flex: 1; margin: 0;
+  font-size: 15px; font-weight: 700; letter-spacing: .5px;
+  color: var(--cyan-hi);
+}
+
+.icon-btn {
+  min-width: var(--tap); min-height: var(--tap);
+  border: 1px solid var(--line); border-radius: 10px;
+  background: var(--panel); color: var(--text);
+  font-size: 17px; cursor: pointer;
+}
+.icon-btn:active { background: var(--panel-hi); }
+
+/* ── แถบสถานะ ── */
+.status {
+  padding: 9px 14px; font-size: 13px;
+  background: var(--panel); border-bottom: 1px solid var(--line);
+  color: var(--dim);
+}
+.status.warn { color: var(--danger); }
+.status.ok { color: var(--ok); }
+
+/* ── เนื้อหา ── */
+main { padding: 12px; max-width: 720px; margin: 0 auto; }
+.page { display: flex; flex-direction: column; gap: 12px; }
+/* ต้องมาหลัง .page และต้อง !important เพราะ class selector ชนะ [hidden]
+   ของเบราว์เซอร์ ถ้าไม่ใส่ ทุกแท็บจะโผล่พร้อมกันจนล้นจอ */
+[hidden] { display: none !important; }
+
+/* กันเนื้อหาดันจอกว้างจนเลื่อนซ้ายขวาได้ */
+html, body { overflow-x: hidden; max-width: 100%; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--cyan);
+  border-radius: 12px;
+  padding: 14px;
+}
+.card.accent-cyan { border-left-color: var(--cyan); }
+.card.accent-violet { border-left-color: var(--violet); }
+.card h2 {
+  margin: 0 0 10px;
+  font-size: 14px; font-weight: 700; color: var(--cyan);
+}
+.card.sticky { position: sticky; top: 56px; z-index: 10; }
+
+label {
+  display: block; margin-bottom: 10px;
+  font-size: 13px; font-weight: 600; color: var(--text);
+}
+label:last-child { margin-bottom: 0; }
+
+input, select {
+  display: block; width: 100%; margin-top: 5px;
+  min-height: var(--tap); padding: 9px 11px;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: 9px;
+  font: inherit;
+}
+input:focus, select:focus { outline: none; border-color: var(--cyan); }
+select {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--cyan) 50%),
+                    linear-gradient(135deg, var(--cyan) 50%, transparent 50%);
+  background-position: right 16px center, right 11px center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 32px;
+}
+.big-input { font-size: 19px; font-weight: 700; text-align: right; }
+
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+.row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 10px; padding: 3px 0;
+}
+.dim { color: var(--dim); }
+.small { font-size: 12px; }
+.right { text-align: right; }
+.label { font-weight: 700; margin: 4px 0; }
+.value { font-size: 19px; color: var(--cyan-hi); }
+.total { font-size: 17px; color: var(--cyan); }
+.warn { color: var(--danger); }
+hr { border: none; border-top: 1px solid var(--line); margin: 9px 0; }
+
+/* ── โอกาสสำเร็จ ── */
+.chance {
+  font-size: 34px; font-weight: 800; letter-spacing: -.5px;
+  color: var(--cyan-hi); margin: 10px 0 6px;
+}
+.bar {
+  height: 12px; border-radius: 6px;
+  background: var(--panel); border: 1px solid var(--line);
+  overflow: hidden; margin-bottom: 6px;
+}
+.bar span {
+  display: block; height: 100%; width: 0;
+  background: linear-gradient(90deg, var(--cyan-lo), var(--cyan));
+  transition: width .15s;
+}
+
+/* ── รายการไอเทม ── */
+.search-row { display: flex; gap: 8px; }
+.search-row input { margin-top: 0; }
+.list { display: flex; flex-direction: column; gap: 8px; }
+.item {
+  display: flex; align-items: center; gap: 10px;
+  min-height: var(--tap); padding: 11px 13px;
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 11px; cursor: pointer; text-align: left;
+  color: inherit; font: inherit; width: 100%;
+}
+.item:active { background: var(--panel-hi); }
+.item .name { flex: 1; font-weight: 600; overflow-wrap: anywhere; }
+.item .cat {
+  font-size: 11px; color: var(--dim);
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: 2px 8px; white-space: nowrap;
+}
+.item .price { text-align: right; white-space: nowrap; }
+.item .price b { display: block; color: var(--cyan); }
+.item .price span { font-size: 11px; color: var(--dim); }
+.empty { padding: 26px 14px; text-align: center; color: var(--dim); }
+
+.fab {
+  position: fixed; right: 16px;
+  bottom: calc(76px + env(safe-area-inset-bottom));
+  width: 54px; height: 54px; border-radius: 50%;
+  background: var(--cyan); color: var(--void);
+  border: none; font-size: 28px; font-weight: 700;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .5);
+  cursor: pointer; z-index: 15;
+}
+
+/* ── เครื่องคิดเลข ── */
+.calc-display {
+  min-height: var(--tap); padding: 9px 12px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 9px;
+  font-size: 24px; font-weight: 700; text-align: right;
+  overflow-x: auto; white-space: nowrap;
+}
+.keypad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+.keypad button {
+  min-height: 52px; border-radius: 10px;
+  background: var(--panel-hi); color: var(--text);
+  border: 1px solid var(--line); font: 600 18px/1 inherit; cursor: pointer;
+}
+.keypad button:active { background: var(--border); }
+.keypad button.op { color: var(--cyan); }
+.keypad button.eq { background: var(--cyan); color: var(--void); border-color: var(--cyan); }
+
+/* ── แถบแท็บล่าง ── */
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  background: #0d1826; border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.tabbar button {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 8px 4px; min-height: 58px;
+  background: none; border: none; cursor: pointer;
+  color: var(--dim); font: 600 11px/1.2 inherit;
+}
+.tabbar button span { font-size: 19px; }
+.tabbar button.active { color: var(--cyan); }
+
+/* ── หน้าต่างแก้ไข ── */
+dialog {
+  width: min(420px, calc(100vw - 32px));
+  background: var(--card); color: var(--text);
+  border: 1px solid var(--border); border-radius: 14px;
+  padding: 18px;
+}
+dialog::backdrop { background: rgba(0, 0, 0, .7); }
+dialog h2 { margin: 0 0 14px; font-size: 16px; color: var(--cyan); }
+dialog menu { display: flex; align-items: center; gap: 8px; margin: 16px 0 0; padding: 0; }
+dialog .spacer { flex: 1; }
+dialog button {
+  min-height: var(--tap); padding: 0 16px; border-radius: 9px;
+  background: var(--panel-hi); color: var(--text);
+  border: 1px solid var(--line); font: 600 14px/1 inherit; cursor: pointer;
+}
+dialog button.primary { background: var(--cyan); color: var(--void); border-color: var(--cyan); }
+dialog button.danger { background: transparent; color: var(--danger); border-color: var(--danger); }
+
+@media (min-width: 560px) {
+  .chance { font-size: 40px; }
+}

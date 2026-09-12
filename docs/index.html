@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b1421">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Darkstory Codex">
+<title>DARKSTORY CODEX</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<header class="appbar">
+  <h1>⚔ DARKSTORY CODEX</h1>
+  <button id="reload" class="icon-btn" title="โหลดข้อมูลจากชีต">🔄</button>
+</header>
+
+<div id="status" class="status" hidden></div>
+
+<main>
+  <!-- ══════════ ตีบวก ══════════ -->
+  <section id="page-calc" class="page">
+    <div class="card">
+      <h2>ตั้งค่าการตีบวก</h2>
+      <div class="grid2">
+        <label>เกรดตอนนี้
+          <select id="gr"></select>
+        </label>
+        <label>ระดับตอนนี้
+          <select id="st"></select>
+        </label>
+      </div>
+      <label>การสืบทอด
+        <select id="inh"></select>
+      </label>
+      <div class="grid2">
+        <label>เกรดที่อยากได้
+          <select id="tgr"></select>
+        </label>
+        <label>ระดับที่อยากได้
+          <select id="en"></select>
+        </label>
+      </div>
+    </div>
+
+    <div class="card accent-cyan">
+      <h2>มีชิ้นส่วนอยู่เท่าไหร่</h2>
+      <input id="have" type="text" inputmode="numeric" placeholder="0" class="big-input">
+      <div id="chance" class="chance">0.0000 %</div>
+      <div class="bar"><span id="bar-fill"></span></div>
+      <div id="chance-detail" class="dim"></div>
+    </div>
+
+    <div class="card">
+      <h2>รายละเอียด</h2>
+      <div class="row"><span class="dim">ใช้ตีบวก</span><b id="use-upgrade">—</b></div>
+      <div id="use-upgrade-why" class="dim small"></div>
+      <div class="row"><span class="dim">ใช้สืบทอด</span><b id="use-inherit">—</b></div>
+      <div id="use-inherit-why" class="dim small"></div>
+      <hr>
+      <div class="label">สรุปรายการ</div>
+      <div class="row"><b id="need-pieces" class="value">—</b><span id="need-melt" class="dim"></span></div>
+      <div class="row"><span class="dim">มูลค่าวัสดุ</span><span id="cost-mat">—</span></div>
+      <div class="row"><span class="dim">ค่าสืบทอด</span><span id="cost-inherit">—</span></div>
+      <hr>
+      <div class="row"><b>รวมทั้งหมด</b><b id="cost-total" class="total">—</b></div>
+      <div class="row"><span></span><span id="cost-thb" class="dim"></span></div>
+      <div id="calc-note" class="warn small"></div>
+    </div>
+  </section>
+
+  <!-- ══════════ ไอเทม ══════════ -->
+  <section id="page-items" class="page" hidden>
+    <div class="card sticky">
+      <div class="search-row">
+        <input id="item-search" type="search" placeholder="🔍 ค้นหาชื่อไอเทม">
+        <button id="clear-search" class="icon-btn">✕</button>
+      </div>
+      <select id="item-filter"></select>
+      <div id="item-count" class="dim small"></div>
+    </div>
+    <div id="item-list" class="list"></div>
+    <button id="add-item" class="fab" title="เพิ่มไอเทม">＋</button>
+  </section>
+
+  <!-- ══════════ แปลงเงิน ══════════ -->
+  <section id="page-money" class="page" hidden>
+    <div class="card">
+      <h2>เรตแลกเปลี่ยน</h2>
+      <label>เหรียญทอง 1 เหรียญ = กี่บาท
+        <input id="rate" type="text" inputmode="decimal">
+      </label>
+      <div id="rate-hint" class="dim small"></div>
+    </div>
+    <div class="card accent-violet">
+      <h2>แปลงค่าเงิน</h2>
+      <label>เหรียญทอง
+        <input id="gold" type="text" inputmode="decimal" class="big-input">
+      </label>
+      <label>เงินบาท
+        <input id="thb" type="text" inputmode="decimal" class="big-input">
+      </label>
+    </div>
+    <div class="card">
+      <h2>เครื่องคิดเลข</h2>
+      <div id="calc-display" class="calc-display">0</div>
+      <div id="calc-hint" class="dim small right"></div>
+      <div id="keypad" class="keypad"></div>
+    </div>
+  </section>
+</main>
+
+<nav class="tabbar">
+  <button data-page="calc" class="active"><span>📊</span>ตีบวก</button>
+  <button data-page="items"><span>🛒</span>ไอเทม</button>
+  <button data-page="money"><span>💱</span>แปลงเงิน</button>
+</nav>
+
+<!-- หน้าต่างแก้ไข/เพิ่มไอเทม -->
+<dialog id="item-dialog">
+  <form method="dialog">
+    <h2 id="dialog-title">แก้ไอเทม</h2>
+    <label>ชื่อไอเทม
+      <input id="d-name" type="text" required>
+    </label>
+    <label>หมวดหมู่
+      <select id="d-category"></select>
+    </label>
+    <label>ราคา (ทอง)
+      <input id="d-price" type="text" inputmode="decimal" required>
+    </label>
+    <div id="d-hint" class="dim small"></div>
+    <menu>
+      <button id="d-delete" value="delete" class="danger" type="submit">ลบ</button>
+      <span class="spacer"></span>
+      <button value="cancel" type="submit">ยกเลิก</button>
+      <button id="d-ok" value="ok" class="primary" type="submit">บันทึก</button>
+    </menu>
+  </form>
+</dialog>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
