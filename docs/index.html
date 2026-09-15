@@ -49,11 +49,20 @@
     </div>
 
     <div class="card accent-cyan">
-      <h2>มีชิ้นส่วนอยู่เท่าไหร่</h2>
-      <input id="have" type="text" inputmode="numeric" placeholder="0" class="big-input">
-      <div id="chance" class="chance">0.0000 %</div>
-      <div class="bar"><span id="bar-fill"></span></div>
-      <div id="chance-detail" class="dim"></div>
+      <h2>ราคาเศษ</h2>
+      <label>จำนวนเศษ
+        <input id="frag-count" type="text" inputmode="numeric" placeholder="0" class="big-input">
+      </label>
+      <div class="price-unit">
+        <label>ราคาต่อ 1 เศษ
+          <input id="frag-price" type="text" inputmode="decimal" placeholder="0.02" class="big-input">
+        </label>
+        <label>หน่วย
+          <select id="frag-unit"></select>
+        </label>
+      </div>
+      <div id="frag-total" class="chance">—</div>
+      <div id="frag-detail" class="dim"></div>
     </div>
 
     <div class="card">

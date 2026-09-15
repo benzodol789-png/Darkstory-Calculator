@@ -12,7 +12,12 @@ const state = {
   rate: 0.008,
   dirty: false,        // มีของที่แก้แล้วยังไม่ได้ส่งขึ้นชีต
   busy: false,
+  fragPrice: null,     // ราคาต่อ 1 เศษ เก็บในเครื่อง ไม่เกี่ยวกับชีต
+  fragUnit: 'thb',
 };
+
+// หน่วยราคาเศษ: key ที่เก็บ -> [ข้อความในช่องเลือก, ชื่อหน่วยตอนแสดงผล]
+const FRAG_UNITS = { thb: ['บาท', 'บาท'], gold: ['ทอง', 'เหรียญทอง'] };
 
 // ───────────────────────── ตัวช่วยเล็กๆ ─────────────────────────
 
@@ -20,6 +25,12 @@ const money = (v) => Number(v).toLocaleString('th-TH', {
   minimumFractionDigits: 1, maximumFractionDigits: 1,
 });
 const count = (v) => Number(v).toLocaleString('th-TH');
+/** ราคาต่อชิ้นแบบไม่ปัดทิ้ง — 0.02 ถ้าใช้ money() จะกลายเป็น 0.0 */
+const priceText = (v) => Number(v).toLocaleString('th-TH', { maximumFractionDigits: 6 });
+/** ยอดรวม อย่างน้อยสองตำแหน่งแบบเงินบาท แต่ไม่ตัดทศนิยมที่มีจริงทิ้ง */
+const totalText = (v) => Number(v).toLocaleString('th-TH', {
+  minimumFractionDigits: 2, maximumFractionDigits: 4,
+});
 
 /** อ่านตัวเลขจากข้อความ รองรับคอมมาคั่นหลัก คืน null ถ้าไม่ใช่ตัวเลข */
 function parseNum(text) {
@@ -60,6 +71,7 @@ function saveLocal() {
   try {
     localStorage.setItem(STORE, JSON.stringify({
       rate: state.rate, items: state.items, dirty: state.dirty,
+      fragPrice: state.fragPrice, fragUnit: state.fragUnit,
     }));
   } catch { /* โหมดส่วนตัวของเบราว์เซอร์เขียนไม่ได้ ไม่ใช่เรื่องคอขาดบาดตาย */ }
 }
@@ -70,6 +82,8 @@ function loadLocal() {
     if (raw.rate > 0) state.rate = raw.rate;
     if (Array.isArray(raw.items)) state.items = raw.items;
     state.dirty = !!raw.dirty;
+    if (typeof raw.fragPrice === 'number' && raw.fragPrice >= 0) state.fragPrice = raw.fragPrice;
+    if (raw.fragUnit in FRAG_UNITS) state.fragUnit = raw.fragUnit;
   } catch { /* ข้อมูลเก่าพัง ก็เริ่มใหม่ */ }
 }
 
@@ -135,31 +149,40 @@ function onModeChange() {
   tgr.disabled = choices.length < 2;
 }
 
-function updChance() {
-  const have = parseNum($('have').value) ?? 0;
-  let needed = null;
-  let reason = '';
-  try {
-    needed = planNow().pieces;
-  } catch (err) {
-    reason = err instanceof C.CalcError ? err.message : 'เลือกค่าให้ครบก่อน';
-  }
+/** ราคาเศษ — จำนวนเศษ x ราคาต่อ 1 เศษ ในหน่วยที่เลือก ไม่ยุ่งกับส่วนอื่น */
+function updFragment() {
+  const unit = $('frag-unit').value in FRAG_UNITS ? $('frag-unit').value : 'thb';
+  const unitName = FRAG_UNITS[unit][1];
 
-  const show = (pct, detail) => {
-    $('chance').textContent = pct === null ? '—' : pct.toFixed(4) + ' %';
-    $('bar-fill').style.width = (pct || 0) + '%';
-    $('chance-detail').textContent = detail;
+  const priceRaw = $('frag-price').value.trim();
+  let price = parseNum(priceRaw);
+  if (price !== null && price < 0) price = null;
+  const priceBad = !!priceRaw && price === null;
+
+  const countRaw = $('frag-count').value.trim();
+  let amount = parseNum(countRaw);
+  if (amount !== null && amount < 0) amount = null;
+  const countBad = !!countRaw && amount === null;
+
+  $('frag-price').classList.toggle('warn', priceBad);
+  $('frag-count').classList.toggle('warn', countBad);
+
+  state.fragUnit = unit;
+  if (!priceBad) state.fragPrice = price;
+  saveLocal();
+
+  const show = (total, detail, bad = false) => {
+    $('frag-total').textContent = total;
+    $('frag-detail').textContent = detail;
+    $('frag-detail').classList.toggle('warn', bad);
   };
 
-  if (needed === null) return show(null, reason);
-  if (needed === 0) return show(null, 'ไม่ต้องใช้ชิ้นส่วน มีแต่ค่าสืบทอด');
+  if (countBad) return show('—', 'จำนวนเศษต้องเป็นจำนวนเต็ม', true);
+  if (priceBad) return show('—', 'ราคาต้องเป็นตัวเลข', true);
+  if (price === null) return show('—', 'ใส่ราคาต่อ 1 เศษก่อน');
 
-  const pct = C.successChance(have, needed);
-  let detail = `มี ${count(have)} / ต้องใช้ ${count(needed)} ชิ้นส่วน`;
-  if (have < needed) detail += `  •  ขาดอีก ${count(needed - have)}`;
-  else if (have > needed) detail += `  •  เหลือ ${count(have - needed)}`;
-  else detail += '  •  พอดีเป๊ะ';
-  show(pct, detail);
+  const pieces = Math.trunc(amount ?? 0);
+  show(`${totalText(pieces * price)} ${unitName}`, `1 เศษ / ${priceText(price)} ${unitName}`);
 }
 
 function clearDetails(note) {
@@ -215,8 +238,6 @@ function calcAll() {
   }
   if (base <= 0) notes.push(noPriceReason());
   $('calc-note').textContent = notes.join('\n');
-
-  updChance();
 }
 
 // ───────────────────────── แท็บไอเทม ─────────────────────────
@@ -493,7 +514,12 @@ function init() {
 
   for (const id of ['gr', 'inh']) $(id).addEventListener('change', () => { onModeChange(); calcAll(); });
   for (const id of ['st', 'en', 'tgr']) $(id).addEventListener('change', calcAll);
-  $('have').addEventListener('input', updChance);
+  fillSelect($('frag-unit'), Object.keys(FRAG_UNITS), state.fragUnit);
+  for (const opt of $('frag-unit').options) opt.textContent = FRAG_UNITS[opt.value][0];
+  if (state.fragPrice !== null) $('frag-price').value = String(state.fragPrice);
+  for (const id of ['frag-count', 'frag-price']) $(id).addEventListener('input', updFragment);
+  $('frag-unit').addEventListener('change', updFragment);
+  updFragment();
 
   $('item-search').addEventListener('input', renderItems);
   $('item-filter').addEventListener('change', renderItems);

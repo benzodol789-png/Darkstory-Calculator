@@ -45,7 +45,7 @@ from game_data import (
 GITHUB_REPO = "benzodol789-png/Darkstory-Calculator"
 APP_NAME = "DARKSTORY CODEX"
 APP_AUTHOR = "โซโuoา"
-CURRENT_VERSION = "2.0.3"
+CURRENT_VERSION = "2.0.4"
 DEFAULT_RATE = 0.85
 
 # timeout ต่อการเชื่อมต่อหนึ่งครั้ง (วินาที) — เป็น socket timeout ไม่ใช่เพดานรวม
@@ -132,6 +132,24 @@ def to_num(value, default=0.0):
 def money(value):
     """จัดรูปจำนวนเงิน — ทศนิยมหลักเดียวพอ ตัวเลขในเกมเป็นหลักล้าน อ่านง่ายกว่า"""
     return "{:,.1f}".format(value)
+
+
+# หน่วยราคาเศษ: key ที่เก็บลงไฟล์ -> ข้อความบนปุ่ม
+FRAGMENT_UNITS = {"thb": "บาท", "gold": "ทอง"}
+FRAGMENT_UNIT_NAMES = {"thb": "บาท", "gold": "เหรียญทอง"}
+
+
+def price_text(value):
+    """ราคาต่อชิ้นแบบไม่ปัดทิ้ง — ราคาเศษอย่าง 0.02 ถ้าใช้ money() จะกลายเป็น 0.0"""
+    return "{:,.6f}".format(value).rstrip("0").rstrip(".")
+
+
+def total_text(value):
+    """ยอดรวมราคาเศษ — อย่างน้อยสองตำแหน่งแบบเงินบาท แต่ไม่ตัดทศนิยมที่มีจริงทิ้ง
+    ไม่งั้นเศษราคาถูกๆ ไม่กี่ชิ้นจะโชว์เป็น 0.00
+    """
+    text = "{:,.4f}".format(value).rstrip("0")
+    return text + "0" * max(0, 2 - len(text.split(".")[1]))
 
 
 # ---------------------------------------------------------------------------
@@ -623,6 +641,8 @@ class DarkstoryApp:
 
         self.rate_gold_thb = DEFAULT_RATE
         self.items = []
+        self.fragment_price = None       # ราคาต่อ 1 เศษ เก็บในเครื่อง
+        self.fragment_unit = "thb"
 
         self.items_dirty = False        # มีไอเทมที่ยังไม่ได้บันทึกขึ้นเซิร์ฟเวอร์
         self.loaded_from_server = False  # กันไม่ให้เขียนทับชีตก่อนเคยโหลด
@@ -1123,7 +1143,7 @@ class DarkstoryApp:
         tab = area.body
         tab.columnconfigure(0, weight=1)
 
-        # ---- บน: ตั้งค่า (ซ้าย) + เช็กว่าของที่มีได้กี่ % (ขวา) ----
+        # ---- บน: ตั้งค่า (ซ้าย) + ราคาเศษ (ขวา) ----
         form_card, form = theme.card(tab, "ตั้งค่าการตีบวก", accent=p["gold"])
         form_card.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         form.columnconfigure(0, weight=5)
@@ -1175,27 +1195,37 @@ class DarkstoryApp:
                    command=self.calc_all).grid(row=6, column=0, columnspan=2,
                                                sticky="ew", pady=(3, 0))
 
-        # ขวาบน — กรอกว่ามีชิ้นส่วนอยู่เท่าไหร่ แล้วดูว่าได้กี่ %
-        # นับเป็น "ชิ้นส่วนหินดั้งเดิม" หน่วยเดียว เพราะชั้นอื่นแปลงกลับมาเป็น
-        # ชิ้นส่วนได้หมด และสายแดงก็ให้โอกาสเท่ากันชิ้นต่อชิ้น
-        ttk.Label(have, text="มีชิ้นส่วนอยู่เท่าไหร่",
+        # ขวาบน — คิดราคาเศษแยกต่างหาก ไม่ผูกกับการตั้งค่าหรือราคาหินดั้งเดิม
+        # เพราะเศษซื้อขายกันคนละราคากับหิน
+        ttk.Label(have, text="จำนวนเศษ",
                   style="Field.TLabel").grid(row=0, column=0, sticky="w")
-        self.have_entry = ttk.Entry(have, justify="right")
-        self.have_entry.grid(row=1, column=0, sticky="ew", pady=(2, 8))
-        self.have_entry.bind("<KeyRelease>", self.upd_chance)
+        self.frag_count = ttk.Entry(have, justify="right")
+        self.frag_count.grid(row=1, column=0, sticky="ew", pady=(2, 7))
+        self.frag_count.bind("<KeyRelease>", self.upd_fragment)
 
-        self.chance_value = ttk.Label(have, text="0.0000 %",
-                                      style="Chance.TLabel")
-        self.chance_value.grid(row=2, column=0, sticky="w")
+        ttk.Label(have, text="ราคาต่อ 1 เศษ",
+                  style="Field.TLabel").grid(row=2, column=0, sticky="w")
+        price_row = ttk.Frame(have, style="Card.TFrame")
+        price_row.grid(row=3, column=0, sticky="ew", pady=(2, 8))
+        price_row.columnconfigure(0, weight=1)
+        self.frag_price = ttk.Entry(price_row, justify="right", width=8)
+        self.frag_price.grid(row=0, column=0, sticky="ew")
+        self.frag_price.bind("<KeyRelease>", self.upd_fragment)
+        if self.fragment_price is not None:
+            self.frag_price.insert(0, price_text(self.fragment_price))
 
-        self.chance_bar = ttk.Progressbar(
-            have, orient="horizontal", maximum=100.0,
-            style="Chance.Horizontal.TProgressbar")
-        self.chance_bar.grid(row=3, column=0, sticky="ew", pady=(4, 5))
+        self.frag_unit = ttk.Combobox(price_row, state="readonly", width=5,
+                                      values=list(FRAGMENT_UNITS.values()))
+        self.frag_unit.set(FRAGMENT_UNITS[self.fragment_unit])
+        self.frag_unit.grid(row=0, column=1, padx=(6, 0))
+        self.frag_unit.bind("<<ComboboxSelected>>", self.upd_fragment)
 
-        self.chance_detail = ttk.Label(have, text="—", style="CardDim.TLabel",
-                                       wraplength=210, justify="left")
-        self.chance_detail.grid(row=4, column=0, sticky="w")
+        self.frag_total = ttk.Label(have, text="—", style="Value.TLabel")
+        self.frag_total.grid(row=4, column=0, sticky="w")
+
+        self.frag_detail = ttk.Label(have, text="", style="CardDim.TLabel",
+                                     wraplength=210, justify="left")
+        self.frag_detail.grid(row=5, column=0, sticky="w")
 
         for combo in (self.st, self.en, self.gr, self.inh, self.tgr):
             combo.bind("<<ComboboxSelected>>", self._settings_changed, add="+")
@@ -1267,7 +1297,7 @@ class DarkstoryApp:
                             pady=(6, 0))
 
         self.on_mode_change()
-        self.upd_chance()
+        self.upd_fragment()
         self.calc_all(quiet=True)
 
     # ---------------- สถานะ / busy ----------------
@@ -1613,74 +1643,42 @@ class DarkstoryApp:
                 "mode": mode, "target": target_index,
                 "pieces": pieces, "inherit": inherit, "plan": plan}
 
-    def _needed_pieces(self):
-        """ชิ้นส่วนที่ทำให้เต็ม 100% — None ถ้าคิดไม่ได้"""
-        try:
-            return self._plan_now()["pieces"]
-        except (ValueError, CalcError):
-            return None
+    def upd_fragment(self, event=None):
+        """ราคาเศษ — จำนวนเศษ x ราคาต่อ 1 เศษ ในหน่วยที่เลือก ไม่ยุ่งกับส่วนอื่น"""
+        danger = theme.PALETTE["danger"]
+        unit = next((key for key, text in FRAGMENT_UNITS.items()
+                     if text == self.frag_unit.get()), "thb")
+        self.fragment_unit = unit
 
-    def _stones_put_in(self):
-        """ชิ้นส่วนที่ผู้ใช้บอกว่ามีอยู่ คืน (จำนวน, กรอกผิดหรือไม่)"""
-        text = self.have_entry.get().strip()
-        if not text:
-            self.have_entry.config(foreground="")
-            return 0, False
-        amount = parse_count(text, None)
-        if amount is None:
-            self.have_entry.config(foreground=theme.PALETTE["danger"])
-            return 0, True
-        self.have_entry.config(foreground="")
-        return amount, False
+        price_raw = self.frag_price.get().strip()
+        price = parse_num(price_raw, None)
+        if price is not None and price < 0:
+            price = None
+        price_bad = bool(price_raw) and price is None
+        self.frag_price.config(foreground=danger if price_bad else "")
+        if not price_bad:
+            self.fragment_price = price
 
-    def upd_chance(self, event=None):
-        # ถูกเรียกจาก upd_price ได้ตั้งแต่ยังสร้างแท็บตีบวกไม่เสร็จ
-        if not hasattr(self, "chance_bar"):
+        count_raw = self.frag_count.get().strip()
+        amount = parse_count(count_raw, None)
+        count_bad = bool(count_raw) and amount is None
+        self.frag_count.config(foreground=danger if count_bad else "")
+
+        if price_bad or count_bad:
+            self.frag_total.config(text="—")
+            self.frag_detail.config(
+                text="จำนวนเศษต้องเป็นจำนวนเต็ม" if count_bad
+                else "ราคาต้องเป็นตัวเลข", foreground=danger)
+            return
+        if price is None:
+            self.frag_total.config(text="—")
+            self.frag_detail.config(text="ใส่ราคาต่อ 1 เศษก่อน", foreground="")
             return
 
-        have, bad = self._stones_put_in()
-        try:
-            needed = self._plan_now()["pieces"]
-            reason = ""
-        except ValueError:
-            needed, reason = None, "เลือกค่าในส่วนบนให้ครบก่อน"
-        except CalcError as exc:
-            needed, reason = None, str(exc)
-
-        if needed is None:
-            self.chance_value.config(text="—")
-            self.chance_bar.config(value=0)
-            self.chance_detail.config(
-                text=reason,
-                foreground=theme.PALETTE["danger"] if reason else "")
-            return
-
-        if needed == 0:
-            # สืบทอดล้วนๆ ไม่ต้องตีบวกเลย ไม่ใช่ "ไม่ได้เลือกอะไร"
-            self.chance_value.config(text="—")
-            self.chance_bar.config(value=0)
-            self.chance_detail.config(
-                text="ไม่ต้องใช้ชิ้นส่วน มีแต่ค่าสืบทอด", foreground="")
-            return
-
-        pct = gd.success_chance(have, needed)
-        self.chance_value.config(text="%.4f %%" % pct)
-        self.chance_bar.config(value=pct)
-
-        if bad:
-            self.chance_detail.config(text="กรอกเป็นจำนวนเต็มเท่านั้น",
-                                      foreground=theme.PALETTE["danger"])
-            return
-
-        detail = "มี %s / ต้องใช้ %s ชิ้นส่วน" % ("{:,}".format(have),
-                                                  "{:,}".format(needed))
-        if have < needed:
-            detail += "   •   ขาดอีก %s ชิ้นส่วน" % "{:,}".format(needed - have)
-        elif have > needed:
-            detail += "   •   เหลือ %s ชิ้นส่วน" % "{:,}".format(have - needed)
-        else:
-            detail += "   •   พอดีเป๊ะ"
-        self.chance_detail.config(text=detail, foreground="")
+        self.frag_total.config(text="%s %s" % (
+            total_text((amount or 0) * price), FRAGMENT_UNIT_NAMES[unit]))
+        self.frag_detail.config(text="1 เศษ / %s %s" % (
+            price_text(price), FRAGMENT_UNIT_NAMES[unit]), foreground="")
 
     # ---------------- แท็บคำนวณ ----------------
 
@@ -1707,8 +1705,7 @@ class DarkstoryApp:
             self.tgr.set("")
 
     def _settings_changed(self, event=None):
-        """ตั้งค่าเปลี่ยน — อัปเดตทั้งช่องสรุปข้างบนและโอกาสข้างล่างให้ตรงกันเสมอ"""
-        self.upd_chance()
+        """ตั้งค่าเปลี่ยน — คิดรายละเอียดข้างล่างใหม่ทันที"""
         self.calc_all(quiet=True)
 
     def _no_price_reason(self):
@@ -2063,6 +2060,11 @@ class DarkstoryApp:
         rate = to_num(data.get("rate_gold_thb"), None)
         if rate and rate > 0:
             self.rate_gold_thb = rate
+        price = to_num(data.get("fragment_price"), None)
+        if price is not None and price >= 0:
+            self.fragment_price = price
+        if data.get("fragment_unit") in FRAGMENT_UNITS:
+            self.fragment_unit = data["fragment_unit"]
         for row in data.get("items", []) if isinstance(data.get("items"), list) else []:
             if isinstance(row, dict) and row.get("name"):
                 price = to_num(row.get("price"), None)
@@ -2074,6 +2076,8 @@ class DarkstoryApp:
     def _save_local(self):
         write_json(LOCAL_PATH, {
             "rate_gold_thb": self.rate_gold_thb,
+            "fragment_price": self.fragment_price,
+            "fragment_unit": self.fragment_unit,
             "items": self.items,
         })
 

@@ -102,7 +102,6 @@ FONT_SPEC = {
     "ds.heading": (12, True,  False),   # หัวข้อในการ์ด — หนาและใหญ่กว่าเนื้อชัดเจน
     "ds.label":   (10, True,  False),   # ป้ายกำกับช่องกรอก
     "ds.big":     (16, True,  False),   # ตัวเลขผลลัพธ์ที่ต้องเด่น
-    "ds.chance":  (30, True,  False),   # ตัวเลขโอกาสสำเร็จ — ใหญ่สุดในโปรแกรม
     "ds.mono":    (10, False, True),
 }
 
@@ -298,14 +297,6 @@ def apply_theme(root, fonts):
               foreground=[("active", p["gold_hi"]), ("selected", p["gold"])],
               indicatorcolor=[("selected", p["gold"]), ("!selected", p["panel"])])
 
-    # ตัวเลขโอกาสสำเร็จ — ตัวใหญ่สุดในโปรแกรม เลียนแบบหน้าตีบวกในเกม
-    style.configure("Chance.TLabel", background=p["card"], foreground=p["gold_hi"],
-                    font="ds.chance")
-
-    # แถบโอกาสสำเร็จในแท็บตีบวก
-    style.configure("Chance.Horizontal.TProgressbar", troughcolor=p["panel"],
-                    background=p["gold"], bordercolor=p["line"],
-                    lightcolor=p["gold"], darkcolor=p["gold_lo"], thickness=14)
     return style
 
 

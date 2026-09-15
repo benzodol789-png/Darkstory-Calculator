@@ -125,20 +125,14 @@ select {
 .warn { color: var(--danger); }
 hr { border: none; border-top: 1px solid var(--line); margin: 9px 0; }
 
-/* ── โอกาสสำเร็จ ── */
+/* ── ราคาเศษ ── */
+.price-unit { display: grid; grid-template-columns: 1fr 96px; gap: 10px; }
+/* ช่องราคาตัวใหญ่กว่าช่องเลือกหน่วย — ยืดให้สูงเท่ากัน ป้ายด้านบนจะได้ตรงแนว */
+.price-unit label { display: flex; flex-direction: column; margin-bottom: 0; }
+.price-unit label > * { flex: 1; }
 .chance {
-  font-size: 34px; font-weight: 800; letter-spacing: -.5px;
-  color: var(--cyan-hi); margin: 10px 0 6px;
-}
-.bar {
-  height: 12px; border-radius: 6px;
-  background: var(--panel); border: 1px solid var(--line);
-  overflow: hidden; margin-bottom: 6px;
-}
-.bar span {
-  display: block; height: 100%; width: 0;
-  background: linear-gradient(90deg, var(--cyan-lo), var(--cyan));
-  transition: width .15s;
+  font-size: 30px; font-weight: 800; letter-spacing: -.5px;
+  color: var(--cyan-hi); margin: 8px 0 2px; overflow-wrap: anywhere;
 }
 
 /* ── รายการไอเทม ── */
