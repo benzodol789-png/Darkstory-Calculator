@@ -26,6 +26,7 @@ export const LINE_RED = "red";
 export const LADDERS = { [LINE_BLUE]: BLUE_LADDER, [LINE_RED]: RED_LADDER };
 
 export const MIN_LEVEL = 1;
+export const MIN_START_LEVEL = 0;
 export const MAX_LEVEL = 30;
 export const MIN_INHERIT_LEVEL = 10;
 export const HIGHER_TARGET_OFFSET = 1;

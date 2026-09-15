@@ -71,6 +71,10 @@ RED_TRADEABLE = False
 BLUE_TRADEABLE = True
 
 MIN_LEVEL = 1
+# ระดับต่ำสุดที่ไอเทม "อยู่" ได้ — ไอเทมใหม่เริ่มที่ +0
+# ต่างจาก MIN_LEVEL ซึ่งบอกว่าตาราง UPGRADE_RED เริ่มแถวไหน
+# (UPGRADE_RED[1] คือค่าตีจาก +0 ไป +1 จึงไม่มีแถว 0)
+MIN_START_LEVEL = 0
 MAX_LEVEL = 30
 MIN_INHERIT_LEVEL = 10     # ตารางสืบทอดทั้งสองเริ่มที่ +10
 
@@ -378,9 +382,9 @@ def upgrade_plan(start_grade, start_level, target_grade, target_level):
     _check_grade(start_grade)
     _check_grade(target_grade)
     for name, lv in (("ระดับปัจจุบัน", start_level), ("ระดับเป้าหมาย", target_level)):
-        if not MIN_LEVEL <= lv <= MAX_LEVEL:
+        if not MIN_START_LEVEL <= lv <= MAX_LEVEL:
             raise CalcError("%s ต้องอยู่ระหว่าง +%d ถึง +%d"
-                            % (name, MIN_LEVEL, MAX_LEVEL))
+                            % (name, MIN_START_LEVEL, MAX_LEVEL))
     if target_grade < start_grade:
         raise CalcError("เกรดเป้าหมายต่ำกว่าเกรดปัจจุบัน สืบทอดย้อนลงไม่ได้")
 
@@ -442,9 +446,9 @@ def _check_grade(grade_index):
 
 def _check_level_range(start_level, end_level):
     for name, lv in (("ระดับ", start_level), ("ถึง", end_level)):
-        if not MIN_LEVEL <= lv <= MAX_LEVEL:
+        if not MIN_START_LEVEL <= lv <= MAX_LEVEL:
             raise CalcError("%s ต้องอยู่ระหว่าง +%d ถึง +%d (ได้ %s)"
-                            % (name, MIN_LEVEL, MAX_LEVEL, lv))
+                            % (name, MIN_START_LEVEL, MAX_LEVEL, lv))
     if start_level > end_level:
         raise CalcError("ระดับเริ่มต้น (+%d) ต้องไม่มากกว่าระดับปลายทาง (+%d)"
                         % (start_level, end_level))

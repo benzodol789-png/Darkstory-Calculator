@@ -66,6 +66,7 @@ def main():
         "export const LADDERS = { [LINE_BLUE]: BLUE_LADDER, [LINE_RED]: RED_LADDER };",
         "",
         "export const MIN_LEVEL = %d;" % gd.MIN_LEVEL,
+        "export const MIN_START_LEVEL = %d;" % gd.MIN_START_LEVEL,
         "export const MAX_LEVEL = %d;" % gd.MAX_LEVEL,
         "export const MIN_INHERIT_LEVEL = %d;" % gd.MIN_INHERIT_LEVEL,
         "export const HIGHER_TARGET_OFFSET = %d;" % gd.HIGHER_TARGET_OFFSET,

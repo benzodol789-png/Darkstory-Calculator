@@ -18,7 +18,7 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
 import game_data as gd
 
-LEVELS = range(gd.MIN_LEVEL, gd.MAX_LEVEL + 1)
+LEVELS = range(gd.MIN_START_LEVEL, gd.MAX_LEVEL + 1)
 GRADE_IDS = range(len(gd.GRADES))
 
 

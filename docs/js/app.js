@@ -479,10 +479,13 @@ function renderAll() {
 function init() {
   loadLocal();
 
-  const levels = Array.from(
-    { length: D.MAX_LEVEL - D.MIN_LEVEL + 1 }, (_, i) => String(D.MIN_LEVEL + i));
+  const range = (from) => Array.from(
+    { length: D.MAX_LEVEL - from + 1 }, (_, i) => String(from + i));
+  const levels = range(D.MIN_LEVEL);
+  // ระดับตอนนี้ต้องเลือก +0 ได้ ไม่งั้นคิดต้นทุนจากไอเทมใหม่ไม่ได้เลย
+  const startLevels = range(D.MIN_START_LEVEL);
   fillSelect($('gr'), D.GRADES, D.GRADES[0]);
-  fillSelect($('st'), levels, '1');
+  fillSelect($('st'), startLevels, '1');
   fillSelect($('inh'), D.INHERIT_MODES, D.INHERIT_NONE);
   fillSelect($('en'), levels, '10');
   fillSelect($('item-filter'), [D.ITEM_CATEGORY_ALL, ...D.ITEM_CATEGORIES], D.ITEM_CATEGORY_ALL);

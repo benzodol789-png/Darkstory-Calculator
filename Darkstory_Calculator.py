@@ -38,13 +38,14 @@ from game_data import (
     MATERIAL_RED_RATIO,
     MAX_LEVEL,
     MIN_LEVEL,
+    MIN_START_LEVEL,
     CalcError,
 )
 
 GITHUB_REPO = "benzodol789-png/Darkstory-Calculator"
 APP_NAME = "DARKSTORY CODEX"
 APP_AUTHOR = "โซโuoา"
-CURRENT_VERSION = "2.0.2"
+CURRENT_VERSION = "2.0.3"
 DEFAULT_RATE = 0.85
 
 # timeout ต่อการเชื่อมต่อหนึ่งครั้ง (วินาที) — เป็น socket timeout ไม่ใช่เพดานรวม
@@ -1138,6 +1139,8 @@ class DarkstoryApp:
         have.columnconfigure(0, weight=1)
 
         levels = [str(i) for i in range(MIN_LEVEL, MAX_LEVEL + 1)]
+        # ระดับตอนนี้ต้องเลือก +0 ได้ ไม่งั้นคิดต้นทุนจากไอเทมใหม่ไม่ได้เลย
+        start_levels = [str(i) for i in range(MIN_START_LEVEL, MAX_LEVEL + 1)]
 
         def pair(row, col, text, widget, span=1):
             pad = (0 if col == 0 else 8, 0)
@@ -1151,7 +1154,7 @@ class DarkstoryApp:
         self.gr.bind("<<ComboboxSelected>>", self.on_mode_change)
         pair(0, 0, "เกรดตอนนี้", self.gr)
 
-        self.st = ttk.Combobox(left, values=levels, state="readonly", width=5)
+        self.st = ttk.Combobox(left, values=start_levels, state="readonly", width=5)
         self.st.set("1")
         pair(0, 1, "ระดับตอนนี้", self.st)
 

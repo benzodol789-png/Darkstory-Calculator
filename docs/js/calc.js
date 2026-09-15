@@ -2,7 +2,7 @@
 // ตัวเลขทุกตัวอยู่ใน data.js ซึ่งสร้างจากไฟล์ Python อัตโนมัติ
 import {
   GRADES, UPGRADE_RED, INHERIT_SAME, INHERIT_HIGHER, HIGHER_RESULT_LEVEL,
-  LADDERS, BLUE_LADDER, MIN_LEVEL, MAX_LEVEL, MIN_INHERIT_LEVEL,
+  LADDERS, BLUE_LADDER, MIN_START_LEVEL, MAX_LEVEL, MIN_INHERIT_LEVEL,
   HIGHER_TARGET_OFFSET, INHERIT_NONE, INHERIT_MODE_SAME, INHERIT_MODE_HIGHER,
 } from './data.js';
 
@@ -15,8 +15,8 @@ function checkGrade(index) {
 
 function checkLevelRange(start, end) {
   for (const [name, lv] of [['ระดับ', start], ['ถึง', end]]) {
-    if (!(lv >= MIN_LEVEL && lv <= MAX_LEVEL)) {
-      throw new CalcError(`${name} ต้องอยู่ระหว่าง +${MIN_LEVEL} ถึง +${MAX_LEVEL} (ได้ ${lv})`);
+    if (!(lv >= MIN_START_LEVEL && lv <= MAX_LEVEL)) {
+      throw new CalcError(`${name} ต้องอยู่ระหว่าง +${MIN_START_LEVEL} ถึง +${MAX_LEVEL} (ได้ ${lv})`);
     }
   }
   if (start > end) {
@@ -149,8 +149,8 @@ export function upgradePlan(startGrade, startLevel, targetGrade, targetLevel) {
   checkGrade(startGrade);
   checkGrade(targetGrade);
   for (const [name, lv] of [['ระดับปัจจุบัน', startLevel], ['ระดับเป้าหมาย', targetLevel]]) {
-    if (!(lv >= MIN_LEVEL && lv <= MAX_LEVEL)) {
-      throw new CalcError(`${name} ต้องอยู่ระหว่าง +${MIN_LEVEL} ถึง +${MAX_LEVEL}`);
+    if (!(lv >= MIN_START_LEVEL && lv <= MAX_LEVEL)) {
+      throw new CalcError(`${name} ต้องอยู่ระหว่าง +${MIN_START_LEVEL} ถึง +${MAX_LEVEL}`);
     }
   }
   if (targetGrade < startGrade) {
